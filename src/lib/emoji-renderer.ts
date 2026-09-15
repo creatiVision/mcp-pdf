@@ -21,8 +21,13 @@ let measureCtx: CanvasContext2D | null = null;
 /**
  * Gets or creates the globally shared canvas context used for emoji measurement.
  * Avoids creating a new canvas instance on every call to measureEmoji.
+ * When `reset` is true, discards any cached context and creates a fresh one
+ * (used to recover from a failed measurement).
  */
-function getMeasureContext(): CanvasContext2D {
+function getMeasureContext(reset?: boolean): CanvasContext2D {
+  if (reset) {
+    measureCtx = null;
+  }
   if (!measureCtx) {
     const canvas = createCanvas(1, 1);
     measureCtx = canvas.getContext('2d');
@@ -101,6 +106,9 @@ export function measureEmoji(emoji: string, fontSize: number): EmojiMetrics {
 
     return { width, height, baselineOffset };
   } catch (_err) {
+    // The shared context may be in a broken state; discard it so the next
+    // call builds a fresh canvas instead of reusing a failing one.
+    getMeasureContext(true);
     // Fallback to fontSize (emojis are square)
     return { width: fontSize, height: fontSize, baselineOffset: 0 };
   }
