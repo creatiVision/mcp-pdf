@@ -30,8 +30,15 @@ function isUrl(imagePath: string): boolean {
  */
 function getLocalImageDimensions(imagePath: string): ImageDimensions | null {
   try {
+    const cwd = process.cwd();
     // Resolve relative paths
-    const resolvedPath = path.isAbsolute(imagePath) ? imagePath : path.resolve(process.cwd(), imagePath);
+    const resolvedPath = path.isAbsolute(imagePath) ? path.resolve(imagePath) : path.resolve(cwd, imagePath);
+
+    // Prevent path traversal outside working directory
+    const relative = path.relative(cwd, resolvedPath);
+    if (relative.startsWith('..') || path.isAbsolute(relative)) {
+      return null;
+    }
 
     if (!fs.existsSync(resolvedPath)) {
       return null;
