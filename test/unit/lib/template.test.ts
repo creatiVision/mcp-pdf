@@ -13,11 +13,20 @@ describe('Template engine', () => {
       assert.strictEqual(result, 'Hello World!');
     });
 
-    it('falls back to original template on render error', () => {
+    it('falls back to original template on syntax/parse error', () => {
       // Unclosed Liquid tag triggers a syntax/parse error in Liquid engine
       const invalidTemplate = 'Hello {% if true %}World';
       const result = render(invalidTemplate, {});
       assert.strictEqual(result, invalidTemplate);
+    });
+
+    it('falls back to original template when liquid execution filter throws an error', () => {
+      registerFilter('renderErrorFilter', () => {
+        throw new Error('Render filter error');
+      });
+      const template = 'Hello {{ name | renderErrorFilter }}';
+      const result = render(template, { name: 'World' });
+      assert.strictEqual(result, template);
     });
   });
 
