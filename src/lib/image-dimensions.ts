@@ -15,19 +15,19 @@ export interface ImageDimensions {
   height: number;
 }
 
-/**
- * Cache for local image dimensions to avoid redundant file reading and parsing.
- * Key: absolute file path
- * Value: dimensions or null if invalid/non-existent file
- */
-const imageDimensionsCache = new Map<string, ImageDimensions | null>();
+interface CacheEntry {
+  mtimeMs: number;
+  dimensions: ImageDimensions;
+}
+
+const MAX_CACHE_SIZE = 500;
+const dimensionCache = new Map<string, CacheEntry>();
 
 /**
- * Clear the image dimensions cache.
- * Useful for testing or when images are modified on disk dynamically.
+ * Clear the image dimension cache (mainly for testing).
  */
 export function clearImageDimensionsCache(): void {
-  imageDimensionsCache.clear();
+  dimensionCache.clear();
 }
 
 /**
@@ -38,26 +38,74 @@ function isUrl(imagePath: string): boolean {
 }
 
 /**
- * Get intrinsic dimensions of a local image file.
+ * Set entry in LRU cache with eviction if limit reached.
+ */
+function setCacheEntry(key: string, entry: CacheEntry): void {
+  if (dimensionCache.size >= MAX_CACHE_SIZE) {
+    const oldestKey = dimensionCache.keys().next().value;
+    if (oldestKey !== undefined) {
+      dimensionCache.delete(oldestKey);
+    }
+  }
+  dimensionCache.set(key, entry);
+}
+
+/**
+ * Get intrinsic dimensions of a local image file asynchronously.
+ *
+ * @param imagePath - Absolute or relative path to image file
+ * @returns Dimensions or null if file doesn't exist or can't be read
+ */
+async function getLocalImageDimensionsAsync(imagePath: string): Promise<ImageDimensions | null> {
+  try {
+    const resolvedPath = path.isAbsolute(imagePath) ? imagePath : path.resolve(process.cwd(), imagePath);
+
+    const stat = await fs.promises.stat(resolvedPath).catch(() => null);
+    if (!stat || !stat.isFile()) {
+      return null;
+    }
+
+    const cached = dimensionCache.get(resolvedPath);
+    if (cached && cached.mtimeMs === stat.mtimeMs) {
+      return cached.dimensions;
+    }
+
+    const buffer = await fs.promises.readFile(resolvedPath);
+    const dimensions = imageSize(new Uint8Array(buffer));
+    if (dimensions.width && dimensions.height) {
+      const result: ImageDimensions = {
+        width: dimensions.width,
+        height: dimensions.height,
+      };
+      setCacheEntry(resolvedPath, { mtimeMs: stat.mtimeMs, dimensions: result });
+      return result;
+    }
+    return null;
+  } catch {
+    return null;
+  }
+}
+
+/**
+ * Get intrinsic dimensions of a local image file synchronously.
  *
  * @param imagePath - Absolute or relative path to image file
  * @returns Dimensions or null if file doesn't exist or can't be read
  */
 function getLocalImageDimensions(imagePath: string): ImageDimensions | null {
-  // Resolve relative paths to absolute path for consistent cache key
-  const resolvedPath = path.isAbsolute(imagePath) ? imagePath : path.resolve(process.cwd(), imagePath);
-
-  if (imageDimensionsCache.has(resolvedPath)) {
-    return imageDimensionsCache.get(resolvedPath) ?? null;
-  }
-
   try {
+    const resolvedPath = path.isAbsolute(imagePath) ? imagePath : path.resolve(process.cwd(), imagePath);
+
     if (!fs.existsSync(resolvedPath)) {
-      imageDimensionsCache.set(resolvedPath, null);
       return null;
     }
 
-    // image-size v2 requires Uint8Array, read file into buffer
+    const stat = fs.statSync(resolvedPath);
+    const cached = dimensionCache.get(resolvedPath);
+    if (cached && cached.mtimeMs === stat.mtimeMs) {
+      return cached.dimensions;
+    }
+
     const buffer = fs.readFileSync(resolvedPath);
     const dimensions = imageSize(new Uint8Array(buffer));
     if (dimensions.width && dimensions.height) {
@@ -65,30 +113,31 @@ function getLocalImageDimensions(imagePath: string): ImageDimensions | null {
         width: dimensions.width,
         height: dimensions.height,
       };
-      imageDimensionsCache.set(resolvedPath, result);
+      setCacheEntry(resolvedPath, { mtimeMs: stat.mtimeMs, dimensions: result });
       return result;
     }
-    imageDimensionsCache.set(resolvedPath, null);
     return null;
   } catch {
-    imageDimensionsCache.set(resolvedPath, null);
     return null;
   }
 }
 
 /**
- * Get image dimensions with appropriate handling for local vs network images.
- *
- * - For local files: Returns intrinsic dimensions from file headers
- * - For network URLs: Returns null (caller must provide explicit dimensions)
- *
- * @param imagePath - Path or URL to image
- * @returns Dimensions or null if unavailable
+ * Get image dimensions with appropriate handling for local vs network images asynchronously.
+ */
+async function getImageDimensionsAsync(imagePath: string): Promise<ImageDimensions | null> {
+  if (isUrl(imagePath)) {
+    return null;
+  }
+
+  return getLocalImageDimensionsAsync(imagePath);
+}
+
+/**
+ * Get image dimensions with appropriate handling for local vs network images synchronously.
  */
 function getImageDimensions(imagePath: string): ImageDimensions | null {
   if (isUrl(imagePath)) {
-    // Network images require explicit dimensions (React Native pattern)
-    // Return null so caller knows dimensions must be provided
     return null;
   }
 
@@ -96,7 +145,58 @@ function getImageDimensions(imagePath: string): ImageDimensions | null {
 }
 
 /**
- * Resolve image dimensions with explicit overrides.
+ * Resolve image dimensions with explicit overrides asynchronously.
+ *
+ * Priority:
+ * 1. Explicit width/height from user
+ * 2. Intrinsic dimensions from file (local files only)
+ * 3. Throw error if dimensions cannot be determined
+ *
+ * If only width or height is provided, the other is calculated from aspect ratio
+ * (if intrinsic dimensions are available).
+ *
+ * @param imagePath - Path or URL to image
+ * @param explicitWidth - User-provided width (optional)
+ * @param explicitHeight - User-provided height (optional)
+ * @returns Resolved dimensions promise
+ * @throws Error if dimensions cannot be determined
+ */
+export async function resolveImageDimensionsAsync(imagePath: string, explicitWidth?: number, explicitHeight?: number): Promise<ImageDimensions> {
+  // Both dimensions provided - use them directly
+  if (explicitWidth !== undefined && explicitHeight !== undefined) {
+    return { width: explicitWidth, height: explicitHeight };
+  }
+
+  // Try to get intrinsic dimensions asynchronously
+  const intrinsic = await getImageDimensionsAsync(imagePath);
+
+  // Only width provided - calculate height from aspect ratio
+  if (explicitWidth !== undefined && intrinsic) {
+    const aspectRatio = intrinsic.height / intrinsic.width;
+    return { width: explicitWidth, height: explicitWidth * aspectRatio };
+  }
+
+  // Only height provided - calculate width from aspect ratio
+  if (explicitHeight !== undefined && intrinsic) {
+    const aspectRatio = intrinsic.width / intrinsic.height;
+    return { width: explicitHeight * aspectRatio, height: explicitHeight };
+  }
+
+  // No explicit dimensions - use intrinsic if available
+  if (intrinsic) {
+    return intrinsic;
+  }
+
+  // Cannot determine dimensions
+  if (isUrl(imagePath)) {
+    throw new Error(`Image dimensions required for network images. Please provide explicit width and height for: ${imagePath}`);
+  }
+
+  throw new Error(`Cannot determine image dimensions for: ${imagePath}. File may not exist or format is unsupported. Please provide explicit width and height.`);
+}
+
+/**
+ * Resolve image dimensions with explicit overrides synchronously.
  *
  * Priority:
  * 1. Explicit width/height from user
@@ -118,7 +218,7 @@ export function resolveImageDimensions(imagePath: string, explicitWidth?: number
     return { width: explicitWidth, height: explicitHeight };
   }
 
-  // Try to get intrinsic dimensions
+  // Try to get intrinsic dimensions synchronously
   const intrinsic = getImageDimensions(imagePath);
 
   // Only width provided - calculate height from aspect ratio

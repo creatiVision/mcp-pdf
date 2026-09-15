@@ -1,6 +1,5 @@
 import assert from 'assert';
 import path from 'path';
-import { performance } from 'perf_hooks';
 import { clearImageDimensionsCache, resolveImageDimensions } from '../../../src/lib/image-dimensions.ts';
 
 describe('image dimensions benchmark', () => {
@@ -10,20 +9,20 @@ describe('image dimensions benchmark', () => {
     const iterations = 10000;
 
     // Uncached benchmark
-    const startUncached = performance.now();
+    const startUncached = Date.now();
     for (let i = 0; i < iterations; i++) {
       clearImageDimensionsCache();
       resolveImageDimensions(imagePath);
     }
-    const durationUncached = performance.now() - startUncached;
+    const durationUncached = Date.now() - startUncached;
 
     // Cached benchmark
     clearImageDimensionsCache();
-    const startCached = performance.now();
+    const startCached = Date.now();
     for (let i = 0; i < iterations; i++) {
       resolveImageDimensions(imagePath);
     }
-    const durationCached = performance.now() - startCached;
+    const durationCached = Date.now() - startCached;
 
     console.log(`\n--- BENCHMARK RESULTS ---`);
     console.log(`Iterations: ${iterations}`);
