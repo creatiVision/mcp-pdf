@@ -58,7 +58,15 @@ function setCacheEntry(key: string, entry: CacheEntry): void {
  */
 async function getLocalImageDimensionsAsync(imagePath: string): Promise<ImageDimensions | null> {
   try {
-    const resolvedPath = path.isAbsolute(imagePath) ? imagePath : path.resolve(process.cwd(), imagePath);
+    const cwd = process.cwd();
+    // Resolve relative paths
+    const resolvedPath = path.isAbsolute(imagePath) ? path.resolve(imagePath) : path.resolve(cwd, imagePath);
+
+    // Prevent path traversal outside working directory
+    const relative = path.relative(cwd, resolvedPath);
+    if (relative.startsWith('..') || path.isAbsolute(relative)) {
+      return null;
+    }
 
     const stat = await fs.promises.stat(resolvedPath).catch(() => null);
     if (!stat || !stat.isFile()) {
