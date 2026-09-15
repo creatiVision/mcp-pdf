@@ -108,6 +108,7 @@ export default function createTool() {
 
       for (const pngPage of pngPages) {
         const pngBuffer = pngPage.content;
+        if (!pngBuffer) continue;
         const pageNum = pngPage.pageNumber;
 
         // Generate output filename
