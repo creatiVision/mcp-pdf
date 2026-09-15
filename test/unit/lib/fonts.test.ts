@@ -3,7 +3,7 @@ import { existsSync, mkdirSync, rmSync, writeFileSync } from 'fs';
 import { join } from 'path';
 
 // Import functions from source with proper TypeScript types
-import { getSystemFont, hasEmoji, needsUnicodeFont, PDF_STANDARD_FONTS, resolveFont } from '../../../src/lib/fonts.ts';
+import { clearFontCache, getSystemFont, hasEmoji, needsUnicodeFont, PDF_STANDARD_FONTS, resolveFont, validateTextForFont } from '../../../src/lib/fonts.ts';
 
 // Use .tmp/ in package root per QUALITY.md rule T8
 const testOutputDir = join(process.cwd(), '.tmp', 'fonts-tests');
@@ -269,3 +269,35 @@ describe('resolveFont', (): void => {
 
 // setupFonts tests skipped - require PDFKit instantiation
 // These will be tested via integration tests instead
+
+describe('validateTextForFont & fontCache', (): void => {
+  const systemFontPath = getSystemFont();
+
+  it('validates text against standard PDF font', (): void => {
+    const res = validateTextForFont('Hello World', 'Helvetica', undefined);
+    assert.strictEqual(res.hasUnsupportedCharacters, false);
+    assert.strictEqual(res.warnings.length, 0);
+
+    const resUnsupported = validateTextForFont('Hello World 🚀', 'Helvetica', undefined);
+    assert.strictEqual(resUnsupported.hasUnsupportedCharacters, true);
+    assert.strictEqual(resUnsupported.warnings.length, 1);
+  });
+
+  if (systemFontPath) {
+    it('uses font cache for custom font path validation and can clear cache', (): void => {
+      clearFontCache();
+
+      const res1 = validateTextForFont('Hello World 🚀', 'DejaVuSans', systemFontPath);
+      assert.ok(res1);
+
+      // Second call should hit fontCache
+      const res2 = validateTextForFont('Hello World 🚀', 'DejaVuSans', systemFontPath);
+      assert.deepStrictEqual(res1, res2);
+
+      // clearFontCache should reset cache without breaking future validation
+      clearFontCache();
+      const res3 = validateTextForFont('Hello World 🚀', 'DejaVuSans', systemFontPath);
+      assert.deepStrictEqual(res1, res3);
+    });
+  }
+});
