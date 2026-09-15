@@ -57,10 +57,40 @@ describe('markdown utilities', () => {
       ]);
     });
 
+    it('tokenizes nested bold inside italic (_**bold inside italic**_)', () => {
+      const tokens = tokenizeMarkdown('_**bold inside italic**_');
+      assert.deepStrictEqual(tokens, [
+        { type: 'boldItalic', text: 'bold inside italic' },
+      ]);
+    });
+
+    it('tokenizes nested italic inside bold (**_italic inside bold_**)', () => {
+      const tokens = tokenizeMarkdown('**_italic inside bold_**');
+      assert.deepStrictEqual(tokens, [
+        { type: 'boldItalic', text: 'italic inside bold' },
+      ]);
+    });
+
     it('tokenizes markdown links ([text](url))', () => {
       const tokens = tokenizeMarkdown('[Example](https://example.com)');
       assert.deepStrictEqual(tokens, [
         { type: 'link', text: 'Example', url: 'https://example.com' },
+      ]);
+    });
+
+    it('tokenizes links with formatted text ([**bold link**](url))', () => {
+      const tokens = tokenizeMarkdown('[**bold link**](https://example.com)');
+      // Outer link token is extracted first, then child strong token is visited
+      assert.deepStrictEqual(tokens, [
+        { type: 'link', text: 'bold link', url: 'https://example.com' },
+        { type: 'bold', text: 'bold link' },
+      ]);
+    });
+
+    it('tokenizes links with empty URL ([empty url]())', () => {
+      const tokens = tokenizeMarkdown('[empty url]()');
+      assert.deepStrictEqual(tokens, [
+        { type: 'link', text: 'empty url', url: '' },
       ]);
     });
 
@@ -77,6 +107,14 @@ describe('markdown utilities', () => {
         { type: 'text', text: ', and a ' },
         { type: 'link', text: 'link', url: 'https://example.com' },
         { type: 'text', text: '.' },
+      ]);
+    });
+
+    it('handles headings and blockquotes', () => {
+      const tokens = tokenizeMarkdown('# Heading\n> blockquote text');
+      assert.deepStrictEqual(tokens, [
+        { type: 'text', text: 'Heading' },
+        { type: 'text', text: 'blockquote text' },
       ]);
     });
   });
