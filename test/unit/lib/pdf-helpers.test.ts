@@ -1,6 +1,6 @@
 import assert from 'assert';
 import PDFDocument from 'pdfkit';
-import { renderText, measureMarkdownTextHeight, TextRenderConfig } from '../../../src/lib/pdf-helpers.ts';
+import { measureMarkdownTextHeight, renderText, type TextRenderConfig } from '../../../src/lib/pdf-helpers.ts';
 import type { FontConfig } from '../../../src/lib/types/typography.ts';
 
 describe('pdf-helpers', () => {

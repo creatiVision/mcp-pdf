@@ -1,6 +1,6 @@
 import assert from 'assert';
 import type { GroupElement, LayoutElement, TextElement } from '../../../../src/lib/ir/types.ts';
-import { getContentHeight, paginateLayout, paginateLayoutWithAtomicGroups, wouldCausePageBreak, calculateNewPageOffset } from '../../../../src/lib/yoga-resume/paginate.ts';
+import { calculateNewPageOffset, getContentHeight, paginateLayout, paginateLayoutWithAtomicGroups, wouldCausePageBreak } from '../../../../src/lib/yoga-resume/paginate.ts';
 import type { PageConfig, ResumeLayoutNode } from '../../../../src/lib/yoga-resume/types.ts';
 
 /**
@@ -46,7 +46,6 @@ describe('yoga-resume/paginate', () => {
       assert.equal(contentHeight, 692); // 792 - 50 - 50
     });
   });
-
 
   describe('wouldCausePageBreak', () => {
     it('returns false when node ends before page bottom', () => {
@@ -123,20 +122,17 @@ describe('yoga-resume/paginate', () => {
     });
   });
 
+  it('keeps node on current page when node ends exactly at page bottom boundary', () => {
+    // Page content height = 692, top margin = 50, page bottom = 742
+    // Node height = 692 fills the exact content height
+    const nodes: ResumeLayoutNode[] = [layoutNode(textElement('Full Page Node'), 50, 692)];
 
-    it('keeps node on current page when node ends exactly at page bottom boundary', () => {
-      // Page content height = 692, top margin = 50, page bottom = 742
-      // Node height = 692 fills the exact content height
-      const nodes: ResumeLayoutNode[] = [
-        layoutNode(textElement('Full Page Node'), 50, 692),
-      ];
+    const pages = paginateLayout(nodes, config);
 
-      const pages = paginateLayout(nodes, config);
-
-      assert.equal(pages.length, 1, 'should fit on 1 page');
-      assert.equal(pages[0].nodes.length, 1);
-      assert.equal(pages[0].nodes[0].position.y, 50);
-    });
+    assert.equal(pages.length, 1, 'should fit on 1 page');
+    assert.equal(pages[0].nodes.length, 1);
+    assert.equal(pages[0].nodes[0].position.y, 50);
+  });
 
   describe('paginateLayoutWithAtomicGroups', () => {
     it('keeps atomic groups together when they overflow', () => {

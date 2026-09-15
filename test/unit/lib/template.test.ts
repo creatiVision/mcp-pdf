@@ -1,10 +1,5 @@
 import assert from 'assert';
-import {
-  render,
-  compile,
-  registerFilter,
-  registerHelper,
-} from '../../../src/lib/template.ts';
+import { compile, registerFilter, registerHelper, render } from '../../../src/lib/template.ts';
 
 describe('Template engine', () => {
   describe('render', () => {

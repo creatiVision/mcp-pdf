@@ -1,5 +1,5 @@
 import assert from 'assert';
-import { tokenizeMarkdown, tokensToStyledSegments, type Token, type StyledSegment } from '../../../src/lib/markdown.ts';
+import { type StyledSegment, type Token, tokenizeMarkdown, tokensToStyledSegments } from '../../../src/lib/markdown.ts';
 
 describe('markdown utilities', () => {
   describe('tokenizeMarkdown', () => {
@@ -10,58 +10,42 @@ describe('markdown utilities', () => {
 
     it('tokenizes plain text', () => {
       const tokens = tokenizeMarkdown('Hello world');
-      assert.deepStrictEqual(tokens, [
-        { type: 'text', text: 'Hello world' },
-      ]);
+      assert.deepStrictEqual(tokens, [{ type: 'text', text: 'Hello world' }]);
     });
 
     it('tokenizes bold text using asterisks (**bold**)', () => {
       const tokens = tokenizeMarkdown('**bold text**');
-      assert.deepStrictEqual(tokens, [
-        { type: 'bold', text: 'bold text' },
-      ]);
+      assert.deepStrictEqual(tokens, [{ type: 'bold', text: 'bold text' }]);
     });
 
     it('tokenizes bold text using underscores (__bold__)', () => {
       const tokens = tokenizeMarkdown('__bold text__');
-      assert.deepStrictEqual(tokens, [
-        { type: 'bold', text: 'bold text' },
-      ]);
+      assert.deepStrictEqual(tokens, [{ type: 'bold', text: 'bold text' }]);
     });
 
     it('tokenizes italic text using asterisks (*italic*)', () => {
       const tokens = tokenizeMarkdown('*italic text*');
-      assert.deepStrictEqual(tokens, [
-        { type: 'italic', text: 'italic text' },
-      ]);
+      assert.deepStrictEqual(tokens, [{ type: 'italic', text: 'italic text' }]);
     });
 
     it('tokenizes italic text using underscores (_italic_)', () => {
       const tokens = tokenizeMarkdown('_italic text_');
-      assert.deepStrictEqual(tokens, [
-        { type: 'italic', text: 'italic text' },
-      ]);
+      assert.deepStrictEqual(tokens, [{ type: 'italic', text: 'italic text' }]);
     });
 
     it('tokenizes bold+italic text (***boldItalic***)', () => {
       const tokens = tokenizeMarkdown('***bold and italic***');
-      assert.deepStrictEqual(tokens, [
-        { type: 'boldItalic', text: 'bold and italic' },
-      ]);
+      assert.deepStrictEqual(tokens, [{ type: 'boldItalic', text: 'bold and italic' }]);
     });
 
     it('tokenizes bold+italic text (___boldItalic___)', () => {
       const tokens = tokenizeMarkdown('___bold and italic___');
-      assert.deepStrictEqual(tokens, [
-        { type: 'boldItalic', text: 'bold and italic' },
-      ]);
+      assert.deepStrictEqual(tokens, [{ type: 'boldItalic', text: 'bold and italic' }]);
     });
 
     it('tokenizes markdown links ([text](url))', () => {
       const tokens = tokenizeMarkdown('[Example](https://example.com)');
-      assert.deepStrictEqual(tokens, [
-        { type: 'link', text: 'Example', url: 'https://example.com' },
-      ]);
+      assert.deepStrictEqual(tokens, [{ type: 'link', text: 'Example', url: 'https://example.com' }]);
     });
 
     it('tokenizes mixed text with plain text and styled segments', () => {
@@ -139,9 +123,7 @@ describe('markdown utilities', () => {
     });
 
     it('converts link token to StyledSegment', () => {
-      const tokens: Token[] = [
-        { type: 'link', text: 'Link text', url: 'https://example.com' },
-      ];
+      const tokens: Token[] = [{ type: 'link', text: 'Link text', url: 'https://example.com' }];
       const segments: StyledSegment[] = tokensToStyledSegments(tokens);
       assert.deepStrictEqual(segments, [
         {

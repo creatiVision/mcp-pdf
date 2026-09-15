@@ -1,13 +1,6 @@
 import assert from 'assert';
-import {
-  resolvePageSize,
-  extractTextOptions,
-  validateContentText,
-  createPDFDocument,
-  textBaseSchema,
-  pdfOutputSchema,
-} from '../../../src/lib/pdf-core.ts';
-import { PAGE_SIZES, DEFAULT_PAGE_SIZE } from '../../../src/constants.ts';
+import { DEFAULT_PAGE_SIZE, PAGE_SIZES } from '../../../src/constants.ts';
+import { createPDFDocument, extractTextOptions, pdfOutputSchema, resolvePageSize, textBaseSchema, validateContentText } from '../../../src/lib/pdf-core.ts';
 
 describe('pdf-core', () => {
   describe('Schemas', () => {
@@ -142,9 +135,7 @@ describe('pdf-core', () => {
       const items = [
         {
           type: 'group',
-          children: [
-            { type: 'text', text: 'Child item with CJK 你好', bold: false },
-          ],
+          children: [{ type: 'text', text: 'Child item with CJK 你好', bold: false }],
         },
       ];
 
