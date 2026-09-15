@@ -1,5 +1,5 @@
 import assert from 'assert';
-import { createConfig, parseConfig } from '../../../src/setup/config.ts';
+import { createConfig, handleVersionHelp, parseConfig } from '../../../src/setup/config.ts';
 
 describe('Config parsing', () => {
   describe('BASE_URL parsing', () => {
@@ -96,6 +96,26 @@ describe('Config parsing', () => {
       const config = parseConfig([], { PORT: '3457' });
       assert.strictEqual(config.transport.type, 'http');
       assert.strictEqual(config.transport.port, 3457);
+    });
+  });
+
+  describe('handleVersionHelp handling', () => {
+    it('handles --version flag', () => {
+      const result = handleVersionHelp(['node', 'script', '--version']);
+      assert.strictEqual(result.handled, true);
+      assert.strictEqual(typeof result.output, 'string');
+    });
+
+    it('handles --help flag', () => {
+      const result = handleVersionHelp(['node', 'script', '--help']);
+      assert.strictEqual(result.handled, true);
+      assert.ok(result.output?.includes('Usage: mcp-pdf'));
+    });
+
+    it('returns unhandled when flags are absent', () => {
+      const result = handleVersionHelp(['node', 'script']);
+      assert.strictEqual(result.handled, false);
+      assert.strictEqual(result.output, undefined);
     });
   });
 });

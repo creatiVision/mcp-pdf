@@ -8,6 +8,29 @@ describe('Template engine', () => {
       assert.strictEqual(result, 'Hello World!');
     });
 
+    it('renders multiple variables and context types', () => {
+      const result = render('{{ greeting }}, {{ name }}! Count: {{ count }}', {
+        greeting: 'Welcome',
+        name: 'Alice',
+        count: 42,
+      });
+      assert.strictEqual(result, 'Welcome, Alice! Count: 42');
+    });
+
+    it('handles LiquidJS control structures like if and for', () => {
+      const template = '{% if show %}{% for item in items %}{{ item }}{% unless forloop.last %}, {% endunless %}{% endfor %}{% endif %}';
+      const result = render(template, {
+        show: true,
+        items: ['apple', 'banana', 'cherry'],
+      });
+      assert.strictEqual(result, 'apple, banana, cherry');
+    });
+
+    it('handles undefined or missing context variables gracefully', () => {
+      const result = render('Hello {{ missing }}!', {});
+      assert.strictEqual(result, 'Hello !');
+    });
+
     it('falls back to original template on syntax/parse error', () => {
       // Unclosed Liquid tag triggers a syntax/parse error in Liquid engine
       const invalidTemplate = 'Hello {% if true %}World';
@@ -33,7 +56,6 @@ describe('Template engine', () => {
     });
 
     it('falls back to original template if execution fails during compiled render', () => {
-      // Register a filter that throws an error when invoked
       registerFilter('throwingFilter', () => {
         throw new Error('Filter error');
       });
@@ -64,6 +86,14 @@ describe('Template engine', () => {
       assert.strictEqual(render('{{ items | join }}', { items: ['a', 'b', 'c'] }), 'a, b, c');
       assert.strictEqual(render('{{ items | join: "-" }}', { items: ['a', 'b', 'c'] }), 'a-b-c');
       assert.strictEqual(render('{{ items | join }}', { items: 'not-an-array' }), 'not-an-array');
+    });
+
+    it('handles null or undefined input gracefully', () => {
+      assert.strictEqual(render('{{ missing | uppercase }}', {}), '');
+      assert.strictEqual(render('{{ missing | lowercase }}', {}), '');
+      assert.strictEqual(render('{{ missing | capitalize }}', {}), '');
+      assert.strictEqual(render('{{ missing | trim }}', {}), '');
+      assert.strictEqual(render('{{ missing | join }}', {}), '');
     });
 
     it('allows registering custom filters', () => {
