@@ -263,6 +263,25 @@ function parseMarkdownText(text: string, parseMarkdown: boolean): ParsedMarkdown
  * @param parseMarkdown - Whether to parse markdown (default: true)
  * @returns Height in points that the rendered text will occupy
  */
+/**
+ * Find style range info for a character position linearly using a pointer index.
+ * Since charPosition increases monotonically during text processing,
+ * we can advance styleRangeIndex to avoid O(N^2) array searching.
+ */
+function findStyleInfoAtPosition<T extends { start: number; end: number }>(
+  styleRanges: T[],
+  charPosition: number,
+  pointer: { index: number }
+): T | undefined {
+  while (pointer.index < styleRanges.length && styleRanges[pointer.index].end <= charPosition) {
+    pointer.index++;
+  }
+  if (pointer.index < styleRanges.length && charPosition >= styleRanges[pointer.index].start && charPosition < styleRanges[pointer.index].end) {
+    return styleRanges[pointer.index];
+  }
+  return undefined;
+}
+
 export function measureMarkdownTextHeight(doc: PDFKit.PDFDocument, text: string, width: number, fontSize: number, lineGap: number, fonts: FontConfig, parseMarkdown = true): number {
   // Set base font for measurement
   doc.font(fonts.regular).fontSize(fontSize);
@@ -279,11 +298,12 @@ export function measureMarkdownTextHeight(doc: PDFKit.PDFDocument, text: string,
   const words: Array<{ width: number }> = [];
   const textWords = plainText.split(/(\s+)/);
   let charPosition = 0;
+  const stylePointer = { index: 0 };
 
   for (const word of textWords) {
     if (word.length > 0) {
       const charEnd = charPosition + word.length;
-      const styleInfo = styleRanges.find((range) => charPosition >= range.start && charPosition < range.end);
+      const styleInfo = findStyleInfoAtPosition(styleRanges, charPosition, stylePointer);
       const isBold = styleInfo?.bold ?? false;
       const isItalic = styleInfo?.italic ?? false;
 
@@ -400,6 +420,7 @@ function renderTextUnified(doc: PDFKit.PDFDocument, text: string, fontSize: numb
   // Calculate word positions and wrap
   const words: Array<{ type: 'text' | 'emoji'; content: string; width: number; charStart: number; charEnd: number; isLink?: boolean; linkUrl?: string; bold?: boolean; italic?: boolean }> = [];
   let charPosition = 0;
+  const stylePointer = { index: 0 };
 
   for (const segment of segments) {
     if (segment.type === 'emoji') {
@@ -407,7 +428,7 @@ function renderTextUnified(doc: PDFKit.PDFDocument, text: string, fontSize: numb
       const charEnd = charPosition + segment.content.length;
 
       // Check styling for this emoji
-      const styleInfo = styleRanges.find((range) => charPosition >= range.start && charPosition < range.end);
+      const styleInfo = findStyleInfoAtPosition(styleRanges, charPosition, stylePointer);
 
       // Safety: validate width to prevent layout issues if emoji measurement fails
       const emojiWidth = Number.isNaN(emojiMetrics.width) || !Number.isFinite(emojiMetrics.width) ? fontSize : emojiMetrics.width;
@@ -432,7 +453,7 @@ function renderTextUnified(doc: PDFKit.PDFDocument, text: string, fontSize: numb
           const charEnd = charPosition + word.length;
 
           // Check styling for this word
-          const styleInfo = styleRanges.find((range) => charPosition >= range.start && charPosition < range.end);
+          const styleInfo = findStyleInfoAtPosition(styleRanges, charPosition, stylePointer);
           const isBold = styleInfo?.bold ?? false;
           const isItalic = styleInfo?.italic ?? false;
 
