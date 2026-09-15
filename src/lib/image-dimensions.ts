@@ -16,6 +16,21 @@ export interface ImageDimensions {
 }
 
 /**
+ * Cache for local image dimensions to avoid redundant file reading and parsing.
+ * Key: absolute file path
+ * Value: dimensions or null if invalid/non-existent file
+ */
+const imageDimensionsCache = new Map<string, ImageDimensions | null>();
+
+/**
+ * Clear the image dimensions cache.
+ * Useful for testing or when images are modified on disk dynamically.
+ */
+export function clearImageDimensionsCache(): void {
+  imageDimensionsCache.clear();
+}
+
+/**
  * Check if a path is a URL (http:// or https://)
  */
 function isUrl(imagePath: string): boolean {
@@ -29,11 +44,16 @@ function isUrl(imagePath: string): boolean {
  * @returns Dimensions or null if file doesn't exist or can't be read
  */
 function getLocalImageDimensions(imagePath: string): ImageDimensions | null {
-  try {
-    // Resolve relative paths
-    const resolvedPath = path.isAbsolute(imagePath) ? imagePath : path.resolve(process.cwd(), imagePath);
+  // Resolve relative paths to absolute path for consistent cache key
+  const resolvedPath = path.isAbsolute(imagePath) ? imagePath : path.resolve(process.cwd(), imagePath);
 
+  if (imageDimensionsCache.has(resolvedPath)) {
+    return imageDimensionsCache.get(resolvedPath) ?? null;
+  }
+
+  try {
     if (!fs.existsSync(resolvedPath)) {
+      imageDimensionsCache.set(resolvedPath, null);
       return null;
     }
 
@@ -41,13 +61,17 @@ function getLocalImageDimensions(imagePath: string): ImageDimensions | null {
     const buffer = fs.readFileSync(resolvedPath);
     const dimensions = imageSize(new Uint8Array(buffer));
     if (dimensions.width && dimensions.height) {
-      return {
+      const result: ImageDimensions = {
         width: dimensions.width,
         height: dimensions.height,
       };
+      imageDimensionsCache.set(resolvedPath, result);
+      return result;
     }
+    imageDimensionsCache.set(resolvedPath, null);
     return null;
   } catch {
+    imageDimensionsCache.set(resolvedPath, null);
     return null;
   }
 }
