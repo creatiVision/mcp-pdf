@@ -17,7 +17,7 @@ import { z } from 'zod';
 import { DEFAULT_HEADING_FONT_SIZE, DEFAULT_TEXT_FONT_SIZE, getDefaultMargins, type Margins, type PageSizePreset } from '../../constants.ts';
 import { registerEmojiFont } from '../../lib/emoji-renderer.ts';
 import { hasEmoji, setupFonts, validateTextForFont } from '../../lib/fonts.ts';
-import { resolveImageDimensions } from '../../lib/image-dimensions.ts';
+import { resolveImageDimensionsAsync } from '../../lib/image-dimensions.ts';
 import { extractTextOptions, type PDFOutput, pdfOutputSchema, resolvePageSize } from '../../lib/pdf-core.ts';
 import { renderText, type TextRenderConfig } from '../../lib/pdf-helpers.ts';
 import { flowingContentItemSchema } from '../../schemas/content.ts';
@@ -212,7 +212,7 @@ export default function createTool() {
           }
 
           case 'image': {
-            const dimensions = resolveImageDimensions(
+            const dimensions = await resolveImageDimensionsAsync(
               item.imagePath,
               item.width ?? contentWidth, // Default to content width
               item.height

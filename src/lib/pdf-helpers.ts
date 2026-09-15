@@ -268,11 +268,7 @@ function parseMarkdownText(text: string, parseMarkdown: boolean): ParsedMarkdown
  * Since charPosition increases monotonically during text processing,
  * we can advance styleRangeIndex to avoid O(N^2) array searching.
  */
-function findStyleInfoAtPosition<T extends { start: number; end: number }>(
-  styleRanges: T[],
-  charPosition: number,
-  pointer: { index: number }
-): T | undefined {
+function findStyleInfoAtPosition<T extends { start: number; end: number }>(styleRanges: T[], charPosition: number, pointer: { index: number }): T | undefined {
   while (pointer.index < styleRanges.length && styleRanges[pointer.index].end <= charPosition) {
     pointer.index++;
   }

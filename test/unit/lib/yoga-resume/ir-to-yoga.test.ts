@@ -26,10 +26,7 @@ describe('yoga-resume/ir-to-yoga', () => {
 
   describe('transformToYogaNodes', () => {
     it('transforms simple non-group IR elements to Yoga nodes', () => {
-      const elements: LayoutElement[] = [
-        { type: 'header', name: 'John Doe', contactItems: [{ text: 'john@example.com' }] } as HeaderElement,
-        { type: 'text', content: 'Hello world' } as TextElement,
-      ];
+      const elements: LayoutElement[] = [{ type: 'header', name: 'John Doe', contactItems: [{ text: 'john@example.com' }] } as HeaderElement, { type: 'text', content: 'Hello world' } as TextElement];
 
       const nodes = transformToYogaNodes(elements);
 
@@ -45,10 +42,7 @@ describe('yoga-resume/ir-to-yoga', () => {
       const group: GroupElement = {
         type: 'group',
         wrap: true,
-        children: [
-          { type: 'text', content: 'Child 1' } as TextElement,
-          { type: 'text', content: 'Child 2' } as TextElement,
-        ],
+        children: [{ type: 'text', content: 'Child 1' } as TextElement, { type: 'text', content: 'Child 2' } as TextElement],
       };
 
       const nodes = transformToYogaNodes([group]);
@@ -104,10 +98,7 @@ describe('yoga-resume/ir-to-yoga', () => {
       const doc = createTestDoc();
       doc.addPage();
 
-      const elements: LayoutElement[] = [
-        { type: 'header', name: 'Jane Doe', contactItems: [{ text: 'jane@example.com' }] } as HeaderElement,
-        { type: 'text', content: 'Summary paragraph' } as TextElement,
-      ];
+      const elements: LayoutElement[] = [{ type: 'header', name: 'Jane Doe', contactItems: [{ text: 'jane@example.com' }] } as HeaderElement, { type: 'text', content: 'Summary paragraph' } as TextElement];
 
       const resultNodes = await calculateResumeLayout(doc, elements, DEFAULT_TYPOGRAPHY, fieldTemplates, false);
 

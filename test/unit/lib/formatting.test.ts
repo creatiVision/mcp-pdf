@@ -1,13 +1,5 @@
 import assert from 'assert';
-import {
-  DEFAULT_FIELD_TEMPLATES,
-  formatDate,
-  calculateTenure,
-  formatTenure,
-  mergeFieldTemplates,
-  renderField,
-  registerFieldFilters,
-} from '../../../src/lib/formatting.ts';
+import { calculateTenure, DEFAULT_FIELD_TEMPLATES, formatDate, formatTenure, mergeFieldTemplates, registerFieldFilters, renderField } from '../../../src/lib/formatting.ts';
 
 describe('Formatting utilities', () => {
   describe('DEFAULT_FIELD_TEMPLATES', () => {
@@ -55,16 +47,9 @@ describe('Formatting utilities', () => {
     });
 
     it('formats all months correctly (short and full names)', () => {
-      const dates = [
-        '2024-01-01', '2024-02-01', '2024-03-01', '2024-04-01',
-        '2024-05-01', '2024-06-01', '2024-07-01', '2024-08-01',
-        '2024-09-01', '2024-10-01', '2024-11-01', '2024-12-01',
-      ];
+      const dates = ['2024-01-01', '2024-02-01', '2024-03-01', '2024-04-01', '2024-05-01', '2024-06-01', '2024-07-01', '2024-08-01', '2024-09-01', '2024-10-01', '2024-11-01', '2024-12-01'];
       const shortMonths = ['Jan', 'Feb', 'Mar', 'Apr', 'May', 'Jun', 'Jul', 'Aug', 'Sep', 'Oct', 'Nov', 'Dec'];
-      const fullMonths = [
-        'January', 'February', 'March', 'April', 'May', 'June',
-        'July', 'August', 'September', 'October', 'November', 'December',
-      ];
+      const fullMonths = ['January', 'February', 'March', 'April', 'May', 'June', 'July', 'August', 'September', 'October', 'November', 'December'];
 
       dates.forEach((d, idx) => {
         assert.strictEqual(formatDate(d, 'MMM'), shortMonths[idx]);
@@ -192,7 +177,7 @@ describe('Formatting utilities', () => {
       assert.strictEqual(existingVal, 'Exists');
 
       // Test tenure filter
-      const tenureVal = renderField("{{ start | tenure: end }}", { start: '2020-01', end: '2022-04' });
+      const tenureVal = renderField('{{ start | tenure: end }}', { start: '2020-01', end: '2022-04' });
       assert.strictEqual(tenureVal, '2 yrs 3 mo');
     });
 
