@@ -15,6 +15,21 @@ const EMOJI_FONT_PATH = join(PROJECT_ROOT, '.fonts', 'NotoColorEmoji.ttf');
 
 let emojiFontRegistered = false;
 
+type CanvasContext2D = ReturnType<ReturnType<typeof createCanvas>['getContext']>;
+let measureCtx: CanvasContext2D | null = null;
+
+/**
+ * Gets or creates the globally shared canvas context used for emoji measurement.
+ * Avoids creating a new canvas instance on every call to measureEmoji.
+ */
+function getMeasureContext(): CanvasContext2D {
+  if (!measureCtx) {
+    const canvas = createCanvas(1, 1);
+    measureCtx = canvas.getContext('2d');
+  }
+  return measureCtx;
+}
+
 /**
  * Register the emoji font with @napi-rs/canvas
  * This should be called once at application startup
@@ -63,9 +78,8 @@ export function measureEmoji(emoji: string, fontSize: number): EmojiMetrics {
   }
 
   try {
-    // Create a small canvas just for measurement
-    const canvas = createCanvas(1, 1);
-    const ctx = canvas.getContext('2d');
+    // Use globally shared canvas context for measurement
+    const ctx = getMeasureContext();
     ctx.font = `${fontSize}px NotoColorEmoji`;
 
     const metrics = ctx.measureText(emoji);
