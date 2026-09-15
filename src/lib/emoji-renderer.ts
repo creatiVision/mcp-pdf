@@ -1,4 +1,4 @@
-import { createCanvas, GlobalFonts } from '@napi-rs/canvas';
+import { type Canvas, createCanvas, GlobalFonts } from '@napi-rs/canvas';
 import emojiRegexFactory from 'emoji-regex';
 import { existsSync } from 'fs';
 import moduleRoot from 'module-root-sync';
@@ -15,24 +15,15 @@ const EMOJI_FONT_PATH = join(PROJECT_ROOT, '.fonts', 'NotoColorEmoji.ttf');
 
 let emojiFontRegistered = false;
 
-type CanvasContext2D = ReturnType<ReturnType<typeof createCanvas>['getContext']>;
-let measureCtx: CanvasContext2D | null = null;
+// Shared canvas instance dedicated for emoji text measurement.
+// Reusing a single canvas avoids the heavy native allocation overhead of createCanvas(1, 1) on every call.
+let measureCanvas: Canvas | null = null;
 
-/**
- * Gets or creates the globally shared canvas context used for emoji measurement.
- * Avoids creating a new canvas instance on every call to measureEmoji.
- * When `reset` is true, discards any cached context and creates a fresh one
- * (used to recover from a failed measurement).
- */
-function getMeasureContext(reset?: boolean): CanvasContext2D {
-  if (reset) {
-    measureCtx = null;
+function getMeasureCanvas(): Canvas {
+  if (!measureCanvas) {
+    measureCanvas = createCanvas(1, 1);
   }
-  if (!measureCtx) {
-    const canvas = createCanvas(1, 1);
-    measureCtx = canvas.getContext('2d');
-  }
-  return measureCtx;
+  return measureCanvas;
 }
 
 /**
@@ -83,8 +74,9 @@ export function measureEmoji(emoji: string, fontSize: number): EmojiMetrics {
   }
 
   try {
-    // Use globally shared canvas context for measurement
-    const ctx = getMeasureContext();
+    // Obtain 2D context from globally shared offscreen measurement canvas
+    const canvas = getMeasureCanvas();
+    const ctx = canvas.getContext('2d');
     ctx.font = `${fontSize}px NotoColorEmoji`;
 
     const metrics = ctx.measureText(emoji);
@@ -106,9 +98,6 @@ export function measureEmoji(emoji: string, fontSize: number): EmojiMetrics {
 
     return { width, height, baselineOffset };
   } catch (_err) {
-    // The shared context may be in a broken state; discard it so the next
-    // call builds a fresh canvas instead of reusing a failing one.
-    getMeasureContext(true);
     // Fallback to fontSize (emojis are square)
     return { width: fontSize, height: fontSize, baselineOffset: 0 };
   }

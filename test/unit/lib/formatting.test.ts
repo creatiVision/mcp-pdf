@@ -196,7 +196,7 @@ describe('Formatting utilities', () => {
       const dateResult = renderField("{{ start | date: 'MMM YYYY' }}", { start: '2021-04-10' });
       assert.strictEqual(dateResult, 'Apr 2021');
 
-      const dateDefaultFormatResult = renderField("{{ start | date }}", { start: '2021-04-10' });
+      const dateDefaultFormatResult = renderField('{{ start | date }}', { start: '2021-04-10' });
       assert.strictEqual(dateDefaultFormatResult, 'Apr 2021');
 
       const dateEmptyResult = renderField("{{ start | date: 'MMM YYYY' }}", { start: null });
@@ -212,7 +212,7 @@ describe('Formatting utilities', () => {
       const defaultEmptyStringVal = renderField("{{ missing | default: 'N/A' }}", { missing: '' });
       assert.strictEqual(defaultEmptyStringVal, 'N/A');
 
-      const defaultNoFallbackVal = renderField("{{ missing | default }}", { missing: null });
+      const defaultNoFallbackVal = renderField('{{ missing | default }}', { missing: null });
       assert.strictEqual(defaultNoFallbackVal, '');
 
       const existingVal = renderField("{{ present | default: 'N/A' }}", { present: 'Exists' });
@@ -222,7 +222,7 @@ describe('Formatting utilities', () => {
       const tenureVal = renderField('{{ start | tenure: end }}', { start: '2020-01', end: '2022-04' });
       assert.strictEqual(tenureVal, '2 yrs 3 mo');
 
-      const tenureEmptyStartVal = renderField("{{ start | tenure: end }}", { start: null, end: '2022-04' });
+      const tenureEmptyStartVal = renderField('{{ start | tenure: end }}', { start: null, end: '2022-04' });
       assert.strictEqual(tenureEmptyStartVal, '');
     });
 
