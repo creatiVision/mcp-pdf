@@ -1,9 +1,9 @@
 import assert from 'assert';
-import { registerFilter, registerHelper, render } from '../../../src/lib/template.ts';
+import { compile, registerFilter, registerHelper, render } from '../../../src/lib/template.ts';
 
-describe('template rendering', () => {
+describe('Template engine', () => {
   describe('render', () => {
-    it('renders basic variable interpolation', () => {
+    it('renders a valid template with context', () => {
       const result = render('Hello {{ name }}!', { name: 'World' });
       assert.strictEqual(result, 'Hello World!');
     });
@@ -31,63 +31,79 @@ describe('template rendering', () => {
       assert.strictEqual(result, 'Hello !');
     });
 
-    it('returns original template on syntax error / render failure', () => {
-      // Invalid tag syntax in LiquidJS
-      const invalidTemplate = 'Hello {% invalid_tag_that_throws %}!';
+    it('falls back to original template on syntax/parse error', () => {
+      // Unclosed Liquid tag triggers a syntax/parse error in Liquid engine
+      const invalidTemplate = 'Hello {% if true %}World';
       const result = render(invalidTemplate, {});
       assert.strictEqual(result, invalidTemplate);
     });
+
+    it('falls back to original template when liquid execution filter throws an error', () => {
+      registerFilter('renderErrorFilter', () => {
+        throw new Error('Render filter error');
+      });
+      const template = 'Hello {{ name | renderErrorFilter }}';
+      const result = render(template, { name: 'World' });
+      assert.strictEqual(result, template);
+    });
   });
 
-  describe('built-in filters', () => {
-    it('uppercase filter transforms string to uppercase', () => {
-      const result = render('{{ text | uppercase }}', { text: 'hello world' });
-      assert.strictEqual(result, 'HELLO WORLD');
+  describe('compile', () => {
+    it('compiles a template for repeated rendering', () => {
+      const compiled = compile('Item: {{ item }}');
+      assert.strictEqual(compiled({ item: 'A' }), 'Item: A');
+      assert.strictEqual(compiled({ item: 'B' }), 'Item: B');
     });
 
-    it('lowercase filter transforms string to lowercase', () => {
-      const result = render('{{ text | lowercase }}', { text: 'HELLO WORLD' });
-      assert.strictEqual(result, 'hello world');
+    it('falls back to original template if execution fails during compiled render', () => {
+      registerFilter('throwingFilter', () => {
+        throw new Error('Filter error');
+      });
+      const compiled = compile('Test {{ val | throwingFilter }}');
+      const result = compiled({ val: 'test' });
+      assert.strictEqual(result, 'Test {{ val | throwingFilter }}');
+    });
+  });
+
+  describe('built-in and custom filters', () => {
+    it('supports built-in uppercase filter', () => {
+      assert.strictEqual(render('{{ name | uppercase }}', { name: 'alice' }), 'ALICE');
     });
 
-    it('capitalize filter capitalizes first letter', () => {
-      const result = render('{{ text | capitalize }}', { text: 'hello world' });
-      assert.strictEqual(result, 'Hello world');
+    it('supports built-in lowercase filter', () => {
+      assert.strictEqual(render('{{ name | lowercase }}', { name: 'BOB' }), 'bob');
     });
 
-    it('trim filter strips whitespace from both ends', () => {
-      const result = render('{{ text | trim }}', { text: '  hello  ' });
-      assert.strictEqual(result, 'hello');
+    it('supports built-in capitalize filter', () => {
+      assert.strictEqual(render('{{ name | capitalize }}', { name: 'charlie' }), 'Charlie');
     });
 
-    it('join filter joins arrays with custom or default separator', () => {
-      const resultWithDefault = render('{{ list | join }}', { list: ['a', 'b', 'c'] });
-      assert.strictEqual(resultWithDefault, 'a, b, c');
-
-      const resultWithCustom = render('{{ list | join: " - " }}', { list: ['a', 'b', 'c'] });
-      assert.strictEqual(resultWithCustom, 'a - b - c');
+    it('supports built-in trim filter', () => {
+      assert.strictEqual(render('{{ name | trim }}', { name: '  dave  ' }), 'dave');
     });
 
-    it('built-in filters handle null or undefined input gracefully', () => {
+    it('supports built-in join filter with arrays and default/custom separators', () => {
+      assert.strictEqual(render('{{ items | join }}', { items: ['a', 'b', 'c'] }), 'a, b, c');
+      assert.strictEqual(render('{{ items | join: "-" }}', { items: ['a', 'b', 'c'] }), 'a-b-c');
+      assert.strictEqual(render('{{ items | join }}', { items: 'not-an-array' }), 'not-an-array');
+    });
+
+    it('handles null or undefined input gracefully', () => {
       assert.strictEqual(render('{{ missing | uppercase }}', {}), '');
       assert.strictEqual(render('{{ missing | lowercase }}', {}), '');
       assert.strictEqual(render('{{ missing | capitalize }}', {}), '');
       assert.strictEqual(render('{{ missing | trim }}', {}), '');
       assert.strictEqual(render('{{ missing | join }}', {}), '');
     });
-  });
 
-  describe('custom filters and helpers', () => {
-    it('registerFilter allows registering custom Liquid filters', () => {
-      registerFilter('double', (v) => Number(v ?? 0) * 2);
-      const result = render('{{ num | double }}', { num: 21 });
-      assert.strictEqual(result, '42');
+    it('allows registering custom filters', () => {
+      registerFilter('repeat', (v) => `${String(v)}${String(v)}`);
+      assert.strictEqual(render('{{ name | repeat }}', { name: 'hi' }), 'hihi');
     });
 
-    it('registerHelper registers custom helper function as a Liquid filter', () => {
-      registerHelper('greet', (_ctx, value, salutation) => `${salutation || 'Hello'}, ${value}!`);
-      const result = render('{{ name | greet: "Hi" }}', { name: 'Bob' });
-      assert.strictEqual(result, 'Hi, Bob!');
+    it('allows registering custom helpers', () => {
+      registerHelper('greet', (_ctx, value, prefix) => `${prefix || 'Hello'} ${value}!`);
+      assert.strictEqual(render('{{ name | greet: "Hi" }}', { name: 'Alice' }), 'Hi Alice!');
     });
   });
 });
