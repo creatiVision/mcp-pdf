@@ -33,6 +33,7 @@ describe('Formatting utilities', () => {
     it('returns raw string as-is if unparseable', () => {
       assert.strictEqual(formatDate('invalid-date', 'YYYY-MM-DD'), 'invalid-date');
       assert.strictEqual(formatDate('2023/01/01', 'YYYY-MM-DD'), '2023/01/01');
+      assert.strictEqual(formatDate('2023-1', 'YYYY-MM'), '2023-1');
     });
 
     it('formats YYYY-MM-DD correctly with various tokens', () => {
@@ -40,12 +41,15 @@ describe('Formatting utilities', () => {
       assert.strictEqual(formatDate('2023-05-15', 'YY/M/D'), '23/5/15');
       assert.strictEqual(formatDate('2023-05-15', 'MMMM D, YYYY'), 'May 15, 2023');
       assert.strictEqual(formatDate('2023-05-15', 'MMM YYYY'), 'May 2023');
+      assert.strictEqual(formatDate('2023-05-04', 'D/M/YY'), '4/5/23');
+      assert.strictEqual(formatDate('2023-05-04', 'DD/MM/YYYY'), '04/05/2023');
     });
 
     it('formats YYYY-MM correctly (without day component)', () => {
       assert.strictEqual(formatDate('2023-11', 'MM/YYYY'), '11/2023');
       assert.strictEqual(formatDate('2023-11', 'MMMM YYYY'), 'November 2023');
       assert.strictEqual(formatDate('2023-11', 'MMM YYYY'), 'Nov 2023');
+      assert.strictEqual(formatDate('2023-11', 'DD/MM/YYYY'), '/11/2023');
     });
 
     it('formats YYYY correctly (defaults month to January)', () => {
@@ -71,6 +75,11 @@ describe('Formatting utilities', () => {
         assert.strictEqual(formatDate(d, 'MMMM'), fullMonths[idx]);
       });
     });
+
+    it('handles out of range month numbers gracefully', () => {
+      assert.strictEqual(formatDate('2024-00-01', 'MMM YYYY'), '2024');
+      assert.strictEqual(formatDate('2024-13-01', 'MMMM YYYY'), '2024');
+    });
   });
 
   describe('calculateTenure', () => {
@@ -91,6 +100,14 @@ describe('Formatting utilities', () => {
       assert.deepStrictEqual(result, { years: 2, months: 5, totalMonths: 29 });
     });
 
+    it('calculates tenure accurately when YYYY-MM-DD or YYYY is passed', () => {
+      const fullDateResult = calculateTenure('2020-01-15', '2022-06-20');
+      assert.deepStrictEqual(fullDateResult, { years: 2, months: 5, totalMonths: 29 });
+
+      const yearOnlyResult = calculateTenure('2020', '2022');
+      assert.deepStrictEqual(yearOnlyResult, { years: 2, months: 0, totalMonths: 24 });
+    });
+
     it('handles exact year boundaries', () => {
       const result = calculateTenure('2020-01', '2023-01');
       assert.deepStrictEqual(result, { years: 3, months: 0, totalMonths: 36 });
@@ -106,7 +123,7 @@ describe('Formatting utilities', () => {
       assert.deepStrictEqual(result, { years: 0, months: 0, totalMonths: 0 });
     });
 
-    it('uses current date when end date is omitted', () => {
+    it('uses current date when end date is omitted or empty', () => {
       const now = new Date();
       const currentYear = now.getFullYear();
       const currentMonth = now.getMonth() + 1;
@@ -114,12 +131,20 @@ describe('Formatting utilities', () => {
       // Start date 1 year ago
       const startYear = currentYear - 1;
       const startDateStr = `${startYear}-${String(currentMonth).padStart(2, '0')}`;
-      const result = calculateTenure(startDateStr, null);
 
-      assert.ok(result !== null);
-      assert.strictEqual(result.years, 1);
-      assert.strictEqual(result.months, 0);
-      assert.strictEqual(result.totalMonths, 12);
+      const resultNull = calculateTenure(startDateStr, null);
+      assert.ok(resultNull !== null);
+      assert.strictEqual(resultNull.years, 1);
+      assert.strictEqual(resultNull.months, 0);
+      assert.strictEqual(resultNull.totalMonths, 12);
+
+      const resultUndefined = calculateTenure(startDateStr, undefined);
+      assert.ok(resultUndefined !== null);
+      assert.strictEqual(resultUndefined.years, 1);
+
+      const resultEmpty = calculateTenure(startDateStr, '');
+      assert.ok(resultEmpty !== null);
+      assert.strictEqual(resultEmpty.years, 1);
     });
   });
 
@@ -127,6 +152,8 @@ describe('Formatting utilities', () => {
     it('returns empty string for invalid start date or zero tenure', () => {
       assert.strictEqual(formatTenure(null, '2023-01'), '');
       assert.strictEqual(formatTenure('2023-01', '2023-01'), '');
+      assert.strictEqual(formatTenure('2023-01', '2020-01'), '');
+      assert.strictEqual(formatTenure('invalid', '2023-01'), '');
     });
 
     it('formats months-only tenure', () => {
@@ -184,9 +211,24 @@ describe('Formatting utilities', () => {
       const dateResult = renderField("{{ start | date: 'MMM YYYY' }}", { start: '2021-04-10' });
       assert.strictEqual(dateResult, 'Apr 2021');
 
+      const dateDefaultFormatResult = renderField("{{ start | date }}", { start: '2021-04-10' });
+      assert.strictEqual(dateDefaultFormatResult, 'Apr 2021');
+
+      const dateEmptyResult = renderField("{{ start | date: 'MMM YYYY' }}", { start: null });
+      assert.strictEqual(dateEmptyResult, '');
+
       // Test default filter
       const defaultVal = renderField("{{ missing | default: 'N/A' }}", {});
       assert.strictEqual(defaultVal, 'N/A');
+
+      const defaultNullVal = renderField("{{ missing | default: 'N/A' }}", { missing: null });
+      assert.strictEqual(defaultNullVal, 'N/A');
+
+      const defaultEmptyStringVal = renderField("{{ missing | default: 'N/A' }}", { missing: '' });
+      assert.strictEqual(defaultEmptyStringVal, 'N/A');
+
+      const defaultNoFallbackVal = renderField("{{ missing | default }}", { missing: null });
+      assert.strictEqual(defaultNoFallbackVal, '');
 
       const existingVal = renderField("{{ present | default: 'N/A' }}", { present: 'Exists' });
       assert.strictEqual(existingVal, 'Exists');
@@ -194,6 +236,9 @@ describe('Formatting utilities', () => {
       // Test tenure filter
       const tenureVal = renderField("{{ start | tenure: end }}", { start: '2020-01', end: '2022-04' });
       assert.strictEqual(tenureVal, '2 yrs 3 mo');
+
+      const tenureEmptyStartVal = renderField("{{ start | tenure: end }}", { start: null, end: '2022-04' });
+      assert.strictEqual(tenureEmptyStartVal, '');
     });
 
     it('is safe to call multiple times (idempotent)', () => {
