@@ -78,13 +78,13 @@ describe('runtime setup', () => {
       const dummyTool = {
         name: 'test_tool',
         config: {},
-        handler: async (args: unknown, extra: unknown) => {
+        handler: async (_args: unknown, extra: unknown) => {
           capturedExtra = extra;
           return { content: [{ type: 'text', text: 'success' }] };
         },
       };
 
-      const wrappedTool = storageLayer.withTool!(dummyTool as any);
+      const wrappedTool = storageLayer.withTool?.(dummyTool as any);
       assert.strictEqual(wrappedTool.name, 'test_tool');
 
       const extraObj: { [key: string]: unknown } = { existing: 'value' };

@@ -1,5 +1,5 @@
-import assert from 'assert';
 import { createCanvas } from '@napi-rs/canvas';
+import assert from 'assert';
 import { measureEmoji, renderEmojiToBuffer, splitTextAndEmoji } from '../../../src/lib/emoji-renderer.ts';
 
 describe('splitTextAndEmoji', (): void => {
@@ -153,7 +153,7 @@ describe('renderEmojiToBuffer', (): void => {
     const canvasProto = Object.getPrototypeOf(sampleCanvas);
     const originalToBuffer = canvasProto.toBuffer;
     try {
-      canvasProto.toBuffer = function () {
+      canvasProto.toBuffer = () => {
         throw new Error('Canvas buffer rendering failed');
       };
 
@@ -169,7 +169,7 @@ describe('renderEmojiToBuffer', (): void => {
     const canvasProto = Object.getPrototypeOf(sampleCanvas);
     const originalGetContext = canvasProto.getContext;
     try {
-      canvasProto.getContext = function () {
+      canvasProto.getContext = () => {
         throw new Error('Failed to get context');
       };
 
@@ -187,16 +187,12 @@ describe('measureEmoji error handling', (): void => {
     const canvasProto = Object.getPrototypeOf(sampleCanvas);
     const originalGetContext = canvasProto.getContext;
     try {
-      canvasProto.getContext = function () {
+      canvasProto.getContext = () => {
         throw new Error('Canvas context error during measurement');
       };
 
       const metrics = measureEmoji('😀', 24);
-      assert.deepStrictEqual(
-        metrics,
-        { width: 24, height: 24, baselineOffset: 0 },
-        'Should return default fallback metrics when measurement fails'
-      );
+      assert.deepStrictEqual(metrics, { width: 24, height: 24, baselineOffset: 0 }, 'Should return default fallback metrics when measurement fails');
     } finally {
       canvasProto.getContext = originalGetContext;
     }

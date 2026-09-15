@@ -8,10 +8,7 @@ describe('resolveImageDimensions', () => {
       assert.throws(
         () => resolveImageDimensions(url),
         (err: Error) => {
-          assert.strictEqual(
-            err.message,
-            `Image dimensions required for network images. Please provide explicit width and height for: ${url}`
-          );
+          assert.strictEqual(err.message, `Image dimensions required for network images. Please provide explicit width and height for: ${url}`);
           return true;
         }
       );
@@ -22,10 +19,7 @@ describe('resolveImageDimensions', () => {
       assert.throws(
         () => resolveImageDimensions(url),
         (err: Error) => {
-          assert.strictEqual(
-            err.message,
-            `Image dimensions required for network images. Please provide explicit width and height for: ${url}`
-          );
+          assert.strictEqual(err.message, `Image dimensions required for network images. Please provide explicit width and height for: ${url}`);
           return true;
         }
       );
@@ -36,10 +30,7 @@ describe('resolveImageDimensions', () => {
       assert.throws(
         () => resolveImageDimensions(url, 100, undefined),
         (err: Error) => {
-          assert.strictEqual(
-            err.message,
-            `Image dimensions required for network images. Please provide explicit width and height for: ${url}`
-          );
+          assert.strictEqual(err.message, `Image dimensions required for network images. Please provide explicit width and height for: ${url}`);
           return true;
         }
       );
@@ -50,10 +41,7 @@ describe('resolveImageDimensions', () => {
       assert.throws(
         () => resolveImageDimensions(url, undefined, 200),
         (err: Error) => {
-          assert.strictEqual(
-            err.message,
-            `Image dimensions required for network images. Please provide explicit width and height for: ${url}`
-          );
+          assert.strictEqual(err.message, `Image dimensions required for network images. Please provide explicit width and height for: ${url}`);
           return true;
         }
       );
@@ -72,10 +60,7 @@ describe('resolveImageDimensions', () => {
       assert.throws(
         () => resolveImageDimensions(imagePath),
         (err: Error) => {
-          assert.strictEqual(
-            err.message,
-            `Cannot determine image dimensions for: ${imagePath}. File may not exist or format is unsupported. Please provide explicit width and height.`
-          );
+          assert.strictEqual(err.message, `Cannot determine image dimensions for: ${imagePath}. File may not exist or format is unsupported. Please provide explicit width and height.`);
           return true;
         }
       );
