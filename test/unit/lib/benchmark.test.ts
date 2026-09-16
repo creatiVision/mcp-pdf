@@ -24,14 +24,14 @@ describe('image dimensions benchmark', () => {
     }
     const durationCached = Date.now() - startCached;
 
-    console.log(`\n--- BENCHMARK RESULTS ---`);
+    console.log('\n--- BENCHMARK RESULTS ---');
     console.log(`Iterations: ${iterations}`);
     console.log(`Uncached: ${durationUncached.toFixed(2)} ms`);
     console.log(`Cached:   ${durationCached.toFixed(2)} ms`);
     if (durationCached > 0) {
       console.log(`Speedup:  ${(durationUncached / durationCached).toFixed(2)}x (${(((durationUncached - durationCached) / durationUncached) * 100).toFixed(1)}% faster)`);
     }
-    console.log(`-------------------------\n`);
+    console.log('-------------------------\n');
 
     assert.ok(durationCached < durationUncached, 'Cached calls should be faster than uncached calls');
   });

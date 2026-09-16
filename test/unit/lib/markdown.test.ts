@@ -45,16 +45,12 @@ describe('markdown utilities', () => {
 
     it('tokenizes nested bold inside italic (_**bold inside italic**_)', () => {
       const tokens = tokenizeMarkdown('_**bold inside italic**_');
-      assert.deepStrictEqual(tokens, [
-        { type: 'boldItalic', text: 'bold inside italic' },
-      ]);
+      assert.deepStrictEqual(tokens, [{ type: 'boldItalic', text: 'bold inside italic' }]);
     });
 
     it('tokenizes nested italic inside bold (**_italic inside bold_**)', () => {
       const tokens = tokenizeMarkdown('**_italic inside bold_**');
-      assert.deepStrictEqual(tokens, [
-        { type: 'boldItalic', text: 'italic inside bold' },
-      ]);
+      assert.deepStrictEqual(tokens, [{ type: 'boldItalic', text: 'italic inside bold' }]);
     });
 
     it('tokenizes markdown links ([text](url))', () => {
@@ -73,9 +69,7 @@ describe('markdown utilities', () => {
 
     it('tokenizes links with empty URL ([empty url]())', () => {
       const tokens = tokenizeMarkdown('[empty url]()');
-      assert.deepStrictEqual(tokens, [
-        { type: 'link', text: 'empty url', url: '' },
-      ]);
+      assert.deepStrictEqual(tokens, [{ type: 'link', text: 'empty url', url: '' }]);
     });
 
     it('tokenizes mixed text with plain text and styled segments', () => {

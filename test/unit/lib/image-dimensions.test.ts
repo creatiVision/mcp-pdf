@@ -1,12 +1,11 @@
+import { createCanvas } from '@napi-rs/canvas';
 import assert from 'assert';
 import fs, { existsSync, mkdirSync, rmSync, writeFileSync } from 'fs';
 import path, { join } from 'path';
-import { createCanvas } from '@napi-rs/canvas';
 import { clearImageDimensionsCache, resolveImageDimensions, resolveImageDimensionsAsync } from '../../../src/lib/image-dimensions.ts';
 
 // Use .tmp/ in package root per QUALITY.md rule T8
 const testOutputDir = join(process.cwd(), '.tmp', 'image-dimensions-tests');
-
 
 describe('resolveImageDimensions security tests', () => {
   it('resolves dimensions for valid local image in working directory', () => {
@@ -106,61 +105,37 @@ describe('resolveImageDimensions', (): void => {
 
   describe('network URLs without complete explicit dimensions', (): void => {
     it('throws error when no dimensions are provided for http URL', (): void => {
-      assert.throws(
-        () => resolveImageDimensions('http://example.com/image.png'),
-        /Image dimensions required for network images/
-      );
+      assert.throws(() => resolveImageDimensions('http://example.com/image.png'), /Image dimensions required for network images/);
     });
 
     it('throws error when no dimensions are provided for https URL', (): void => {
-      assert.throws(
-        () => resolveImageDimensions('https://example.com/image.png'),
-        /Image dimensions required for network images/
-      );
+      assert.throws(() => resolveImageDimensions('https://example.com/image.png'), /Image dimensions required for network images/);
     });
 
     it('throws error when only width is provided for network URL', (): void => {
-      assert.throws(
-        () => resolveImageDimensions('https://example.com/image.png', 100),
-        /Image dimensions required for network images/
-      );
+      assert.throws(() => resolveImageDimensions('https://example.com/image.png', 100), /Image dimensions required for network images/);
     });
 
     it('throws error when only height is provided for network URL', (): void => {
-      assert.throws(
-        () => resolveImageDimensions('https://example.com/image.png', undefined, 100),
-        /Image dimensions required for network images/
-      );
+      assert.throws(() => resolveImageDimensions('https://example.com/image.png', undefined, 100), /Image dimensions required for network images/);
     });
   });
 
   describe('error handling for invalid local files', (): void => {
     it('throws error when local file does not exist and no explicit dimensions given', (): void => {
-      assert.throws(
-        () => resolveImageDimensions(nonExistentImagePath),
-        /Cannot determine image dimensions/
-      );
+      assert.throws(() => resolveImageDimensions(nonExistentImagePath), /Cannot determine image dimensions/);
     });
 
     it('throws error when local file does not exist and only width is given', (): void => {
-      assert.throws(
-        () => resolveImageDimensions(nonExistentImagePath, 100),
-        /Cannot determine image dimensions/
-      );
+      assert.throws(() => resolveImageDimensions(nonExistentImagePath, 100), /Cannot determine image dimensions/);
     });
 
     it('throws error when local file does not exist and only height is given', (): void => {
-      assert.throws(
-        () => resolveImageDimensions(nonExistentImagePath, undefined, 100),
-        /Cannot determine image dimensions/
-      );
+      assert.throws(() => resolveImageDimensions(nonExistentImagePath, undefined, 100), /Cannot determine image dimensions/);
     });
 
     it('throws error for corrupted or non-image local file', (): void => {
-      assert.throws(
-        () => resolveImageDimensions(invalidImagePath),
-        /Cannot determine image dimensions/
-      );
+      assert.throws(() => resolveImageDimensions(invalidImagePath), /Cannot determine image dimensions/);
     });
   });
 });
