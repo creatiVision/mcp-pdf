@@ -224,6 +224,17 @@ export interface CharacterValidationResult {
   unsupportedChars: Map<string, number>; // char -> codePoint
 }
 
+// Cache for opened fontkit font instances by file path
+// biome-ignore lint/suspicious/noExplicitAny: fontkit Font object
+const fontCache = new Map<string, any>();
+
+/**
+ * Clear the internal fontkit font instance cache
+ */
+export function clearFontCache(): void {
+  fontCache.clear();
+}
+
 /**
  * Validate text against a specific font's glyph coverage
  *
@@ -271,13 +282,15 @@ export function validateTextForFont(text: string, fontName: string, fontPath: st
   } else if (fontPath && !fontName.startsWith('CustomFont')) {
     // Custom font - check actual glyph coverage using fontkit
     try {
-      const fontOrCollection = fontkitOpenSync(fontPath);
-
-      // Handle font collections (TTC files) - use first font
-      const font = 'fonts' in fontOrCollection ? fontOrCollection.fonts[0] : fontOrCollection;
+      let font = fontCache.get(fontPath);
+      if (font === undefined) {
+        const fontOrCollection = fontkitOpenSync(fontPath);
+        font = 'fonts' in fontOrCollection ? (fontOrCollection.fonts[0] ?? null) : (fontOrCollection ?? null);
+        fontCache.set(fontPath, font);
+      }
 
       if (!font) {
-        // Font collection is empty - can't validate
+        // Font collection is empty or invalid - can't validate
         return result;
       }
 
