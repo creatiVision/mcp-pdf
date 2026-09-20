@@ -1,5 +1,7 @@
+import { pathToFileURL } from 'node:url';
 import { setup } from '@mcp-z/mcp-pdf';
 import assert from 'assert';
+import * as path from 'path';
 
 describe('Config parsing', () => {
   describe('BASE_URL parsing', () => {
@@ -30,11 +32,11 @@ describe('Config parsing', () => {
 
   describe('resourceStoreUri parsing', () => {
     it('uses RESOURCE_STORE_URI env var', () => {
+      const customPath = path.join(path.parse(process.cwd()).root, 'custom', 'path');
       const config = setup.parseConfig([], {
-        RESOURCE_STORE_URI: 'file:///custom/path',
+        RESOURCE_STORE_URI: pathToFileURL(customPath).href,
       });
-      assert.ok(config.resourceStoreUri.startsWith('file://'));
-      assert.ok(config.resourceStoreUri.endsWith('/custom/path'));
+      assert.strictEqual(config.resourceStoreUri, pathToFileURL(customPath).href);
     });
 
     it('defaults to ~/.mcp-z/pdf/files when not provided', () => {
