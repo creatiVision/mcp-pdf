@@ -3,7 +3,7 @@ import { existsSync, mkdirSync, rmSync, writeFileSync } from 'fs';
 import { join } from 'path';
 
 // Import functions from source with proper TypeScript types
-import { clearFontCache, getSystemFont, hasEmoji, needsUnicodeFont, PDF_STANDARD_FONTS, resolveFont, validateTextForFont } from '../../../src/lib/fonts.ts';
+import { clearFontCache, getSystemFont, hasEmoji, needsUnicodeFont, PDF_STANDARD_FONTS, preloadFont, resolveFont, validateTextForFont } from '../../../src/lib/fonts.ts';
 
 // Use .tmp/ in package root per QUALITY.md rule T8
 const testOutputDir = join(process.cwd(), '.tmp', 'fonts-tests');
@@ -300,4 +300,35 @@ describe('validateTextForFont & fontCache', (): void => {
       assert.deepStrictEqual(res1, res3);
     });
   }
+});
+
+describe('preloadFont', (): void => {
+  const systemFontPath = getSystemFont();
+
+  it('preloads font asynchronously into cache', async (): Promise<void> => {
+    clearFontCache();
+    if (systemFontPath) {
+      await preloadFont(systemFontPath);
+      // Synchronous validation should now hit cached font instance without opening sync
+      const res = validateTextForFont('Hello World', 'DejaVuSans', systemFontPath);
+      assert.strictEqual(res.hasUnsupportedCharacters, false);
+    }
+  });
+
+  it('handles concurrent calls gracefully', async (): Promise<void> => {
+    clearFontCache();
+    if (systemFontPath) {
+      await Promise.all([preloadFont(systemFontPath), preloadFont(systemFontPath)]);
+      const res = validateTextForFont('Hello World', 'DejaVuSans', systemFontPath);
+      assert.strictEqual(res.hasUnsupportedCharacters, false);
+    }
+  });
+
+  it('handles invalid font path gracefully without throwing', async (): Promise<void> => {
+    clearFontCache();
+    await preloadFont('/nonexistent/path/font.ttf');
+    // Validation for invalid path should remain silent without throwing
+    const res = validateTextForFont('Hello World', 'DejaVuSans', '/nonexistent/path/font.ttf');
+    assert.strictEqual(res.hasUnsupportedCharacters, false);
+  });
 });

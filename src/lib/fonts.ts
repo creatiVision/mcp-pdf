@@ -1,5 +1,5 @@
 import emojiRegexFactory from 'emoji-regex';
-import { openSync as fontkitOpenSync } from 'fontkit';
+import { open as fontkitOpen, openSync as fontkitOpenSync } from 'fontkit';
 import { existsSync } from 'fs';
 import { mkdir, writeFile } from 'fs/promises';
 import { tmpdir } from 'os';
@@ -205,6 +205,9 @@ export async function setupFonts(_doc: PDFKit.PDFDocument, fontSpec: string | un
     };
   }
 
+  // Preload custom font asynchronously so subsequent glyph validation is non-blocking
+  await preloadFont(resolvedFont);
+
   // It's a custom font file path (from auto-detect or explicit path)
   // Custom fonts typically don't have separate bold/italic files readily available,
   // so we fall back to Helvetica which has all variants built-in.
@@ -233,6 +236,33 @@ const fontCache = new Map<string, any>();
  */
 export function clearFontCache(): void {
   fontCache.clear();
+}
+/**
+ * Preload a font asynchronously into the font cache to avoid synchronous I/O during validation
+ */
+export async function preloadFont(fontPath: string): Promise<void> {
+  if (fontCache.has(fontPath)) {
+    const cached = fontCache.get(fontPath);
+    if (cached && typeof cached.then === 'function') {
+      await cached;
+    }
+    return;
+  }
+
+  const promise = (async () => {
+    try {
+      const fontOrCollection = await fontkitOpen(fontPath);
+      const font = 'fonts' in fontOrCollection ? (fontOrCollection.fonts[0] ?? null) : (fontOrCollection ?? null);
+      fontCache.set(fontPath, font);
+      return font;
+    } catch (_err) {
+      fontCache.set(fontPath, null);
+      return null;
+    }
+  })();
+
+  fontCache.set(fontPath, promise);
+  await promise;
 }
 
 /**
@@ -283,6 +313,9 @@ export function validateTextForFont(text: string, fontName: string, fontPath: st
     // Custom font - check actual glyph coverage using fontkit
     try {
       let font = fontCache.get(fontPath);
+      if (font && typeof font.then === 'function') {
+        font = undefined;
+      }
       if (font === undefined) {
         const fontOrCollection = fontkitOpenSync(fontPath);
         font = 'fonts' in fontOrCollection ? (fontOrCollection.fonts[0] ?? null) : (fontOrCollection ?? null);
