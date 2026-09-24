@@ -1,4 +1,4 @@
-import { createCanvas, GlobalFonts } from '@napi-rs/canvas';
+import { type Canvas, createCanvas, GlobalFonts } from '@napi-rs/canvas';
 import emojiRegexFactory from 'emoji-regex';
 import { existsSync } from 'fs';
 import moduleRoot from 'module-root-sync';
@@ -15,6 +15,17 @@ const EMOJI_FONT_PATH = join(PROJECT_ROOT, 'assets', 'fonts', 'NotoColorEmoji.tt
 
 let emojiFontRegistered = false;
 let emojiFontWarned = false;
+
+// Shared canvas instance dedicated for emoji text measurement.
+// Reusing a single canvas avoids the heavy native allocation overhead of createCanvas(1, 1) on every call.
+let measureCanvas: Canvas | null = null;
+
+function getMeasureCanvas(): Canvas {
+  if (!measureCanvas) {
+    measureCanvas = createCanvas(1, 1);
+  }
+  return measureCanvas;
+}
 
 /**
  * Register the emoji font with @napi-rs/canvas
@@ -76,8 +87,8 @@ export function measureEmoji(emoji: string, fontSize: number): EmojiMetrics {
   }
 
   try {
-    // Create a small canvas just for measurement
-    const canvas = createCanvas(1, 1);
+    // Obtain 2D context from globally shared offscreen measurement canvas
+    const canvas = getMeasureCanvas();
     const ctx = canvas.getContext('2d');
     ctx.font = `${fontSize}px NotoColorEmoji`;
 
