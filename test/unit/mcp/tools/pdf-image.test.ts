@@ -151,4 +151,41 @@ describe('pdf-image tool', () => {
       assert.ok(error.message.includes('not found'));
     }
   });
+
+  it('throws error for corrupt or invalid PDF file', async () => {
+    const corruptPdfPath = join(testOutputDir, 'corrupt.pdf');
+    writeFileSync(corruptPdfPath, 'This is not a valid PDF file');
+
+    try {
+      await tool.handler(
+        {
+          pdfPath: corruptPdfPath,
+        },
+        extra
+      );
+      assert.fail('Should have thrown an error for corrupt PDF');
+    } catch (error) {
+      assert.ok(error instanceof Error);
+      assert.ok(
+        error.message.includes('Error generating PDF image') ||
+        error.message.includes('Failed to render')
+      );
+    }
+  });
+
+  it('throws error when requesting invalid page numbers out of bounds', async () => {
+    try {
+      await tool.handler(
+        {
+          pdfPath: testPdfPath,
+          pages: 999,
+        },
+        extra
+      );
+      assert.fail('Should have thrown an error for out of bounds page');
+    } catch (error) {
+      assert.ok(error instanceof Error);
+      assert.ok(error.message.includes('Error generating PDF image') || error.message.includes('Failed to render'));
+    }
+  });
 });
