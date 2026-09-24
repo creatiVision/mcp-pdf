@@ -3,10 +3,32 @@ import { existsSync, mkdirSync, rmSync, writeFileSync } from 'fs';
 import { join } from 'path';
 
 // Import functions from source with proper TypeScript types
-import { clearFontCache, getSystemFont, hasEmoji, needsUnicodeFont, PDF_STANDARD_FONTS, resolveFont, validateTextForFont } from '../../../src/lib/fonts.ts';
+import { clearFontCache, getSystemFont, hasEmoji, isPDFStandardFont, needsUnicodeFont, PDF_STANDARD_FONTS, resolveFont, validateTextForFont } from '../../../src/lib/fonts.ts';
 
 // Use .tmp/ in package root per QUALITY.md rule T8
 const testOutputDir = join(process.cwd(), '.tmp', 'fonts-tests');
+
+describe('isPDFStandardFont', (): void => {
+  it('returns true for all standard PDF fonts', (): void => {
+    for (const font of PDF_STANDARD_FONTS) {
+      assert.strictEqual(isPDFStandardFont(font), true, `Should return true for ${font}`);
+    }
+  });
+
+  it('returns false for non-standard font names', (): void => {
+    assert.strictEqual(isPDFStandardFont('Arial'), false);
+    assert.strictEqual(isPDFStandardFont('Comic Sans MS'), false);
+    assert.strictEqual(isPDFStandardFont('Roboto'), false);
+    assert.strictEqual(isPDFStandardFont(''), false);
+    assert.strictEqual(isPDFStandardFont('Helvetica-Custom'), false);
+  });
+
+  it('returns false for incorrect case', (): void => {
+    assert.strictEqual(isPDFStandardFont('helvetica'), false);
+    assert.strictEqual(isPDFStandardFont('TIMES-ROMAN'), false);
+    assert.strictEqual(isPDFStandardFont('courier'), false);
+  });
+});
 
 describe('PDF_STANDARD_FONTS', (): void => {
   it('should contain all 14 standard PDF fonts', (): void => {
