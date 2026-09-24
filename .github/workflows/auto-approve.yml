@@ -11,7 +11,7 @@ jobs:
   auto-approve:
     runs-on: ubuntu-latest
     continue-on-error: true
-    if: github.actor == 'google-labs-jules[bot]' || github.actor == 'creatiVision'
+    if: (github.actor == 'google-labs-jules[bot]' || github.actor == 'creatiVision') && github.actor != 'github-actions[bot]'
     steps:
       - name: Approve pull request
         uses: hmarr/auto-approve-action@v4
