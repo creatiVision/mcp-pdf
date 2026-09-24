@@ -164,8 +164,23 @@ export default function createTool() {
       // Get content width (page width minus margins)
       const contentWidth = doc.page.width - doc.page.margins.left - doc.page.margins.right;
 
+      // Pre-fetch image dimensions concurrently for all image items
+      const imageDimensionPromises = content.map((item) => {
+        if (item.type === 'image') {
+          return resolveImageDimensionsAsync(
+            item.imagePath,
+            item.width ?? contentWidth, // Default to content width
+            item.height
+          );
+        }
+        return null;
+      });
+
+      const resolvedImageDimensions = await Promise.all(imageDimensionPromises);
+
       // Render flowing content
-      for (const item of content) {
+      for (let i = 0; i < content.length; i++) {
+        const item = content[i];
         switch (item.type) {
           case 'text': {
             const fontSize = item.fontSize ?? DEFAULT_TEXT_FONT_SIZE;
@@ -212,11 +227,7 @@ export default function createTool() {
           }
 
           case 'image': {
-            const dimensions = await resolveImageDimensionsAsync(
-              item.imagePath,
-              item.width ?? contentWidth, // Default to content width
-              item.height
-            );
+            const dimensions = resolvedImageDimensions[i]!;
 
             // Ensure image doesn't exceed content width
             const imgWidth = Math.min(dimensions.width, contentWidth);
