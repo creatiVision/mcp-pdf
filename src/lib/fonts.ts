@@ -56,7 +56,19 @@ export function hasEmoji(text: string): boolean {
  * Returns path to first found Unicode-capable font, or null if none found
  * Prioritizes fonts with known CJK (Chinese/Japanese/Korean) support
  */
+let cachedSystemFont: string | null | undefined = undefined;
+
+/**
+ * Auto-detect a system font with Unicode support
+ * Returns path to first found Unicode-capable font, or null if none found
+ * Prioritizes fonts with known CJK (Chinese/Japanese/Korean) support
+ * Caches the result to avoid synchronous file system existence checks on every call.
+ */
 export function getSystemFont(): string | null {
+  if (cachedSystemFont !== undefined) {
+    return cachedSystemFont;
+  }
+
   // System fonts ordered by Unicode/CJK support quality
   const unicodeSupportedFonts = [
     // macOS - prioritize Arial Unicode (full CJK support)
@@ -76,10 +88,12 @@ export function getSystemFont(): string | null {
 
   for (const fontPath of unicodeSupportedFonts) {
     if (existsSync(fontPath)) {
+      cachedSystemFont = fontPath;
       return fontPath;
     }
   }
 
+  cachedSystemFont = null;
   return null;
 }
 
@@ -233,6 +247,7 @@ const fontCache = new Map<string, any>();
  */
 export function clearFontCache(): void {
   fontCache.clear();
+  cachedSystemFont = undefined;
 }
 
 /**
