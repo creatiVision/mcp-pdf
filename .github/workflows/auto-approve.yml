@@ -13,7 +13,8 @@ jobs:
     if: github.actor == 'google-labs-jules[bot]' || github.actor == 'creatiVision'
     steps:
       - name: Approve pull request
-        uses: hmarr/auto-approve-action@v4
-        continue-on-error: true
-        with:
-          review-message: 'Auto-approved: green CI + automated PR from Jules/owner.'
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+          PR_URL: ${{ github.event.pull_request.html_url }}
+        run: |
+          gh pr review "$PR_URL" --approve --body "Auto-approved: green CI + automated PR from Jules/owner." || echo "Auto-approval skipped or not permitted."
