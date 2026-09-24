@@ -18,11 +18,13 @@ Options:
   --version              Show version number
   --help                 Show this help message
   --base-url=<url>       Base URL for HTTP file serving
+  --cors-origin=<origin> Allowed CORS origin(s), comma-separated
   --log-level=<level>    Logging level (default: info)
   --resource-store-uri=<uri>    Resource store URI for file storage (default: file://~/.mcp-z/mcp-pdf/files)
 
 Environment Variables:
   BASE_URL               Base URL for HTTP file serving (optional)
+  CORS_ORIGIN            Allowed CORS origin(s), comma-separated (optional)
   LOG_LEVEL              Default logging level (optional)
   RESOURCE_STORE_URI            Resource store URI (optional, file://)
 
@@ -58,12 +60,13 @@ export function handleVersionHelp(args: string[]): { handled: boolean; output?: 
 export function parseConfig(args: string[], env: Record<string, string | undefined>): ServerConfig {
   const transportConfig = parseTransportConfig(args, env);
 
-  // Parse application-level config (LOG_LEVEL, RESOURCE_STORE_URI, BASE_URL)
+  // Parse application-level config (LOG_LEVEL, RESOURCE_STORE_URI, BASE_URL, CORS_ORIGIN)
   const { values } = parseArgs({
     args,
     options: {
       'log-level': { type: 'string' },
       'base-url': { type: 'string' },
+      'cors-origin': { type: 'string' },
       'resource-store-uri': { type: 'string' },
     },
     strict: false, // Allow other arguments
@@ -83,6 +86,15 @@ export function parseConfig(args: string[], env: Record<string, string | undefin
   const envBaseUrl = env.BASE_URL;
   const baseUrl = cliBaseUrl ?? envBaseUrl;
 
+  const cliCorsOrigin = typeof values['cors-origin'] === 'string' ? values['cors-origin'] : undefined;
+  const envCorsOrigin = env.CORS_ORIGIN;
+  const corsOriginRaw = cliCorsOrigin ?? envCorsOrigin;
+  let corsOrigin: string | string[] | undefined;
+  if (corsOriginRaw) {
+    const parts = corsOriginRaw.split(',').map((s) => s.trim()).filter((s) => s.length > 0);
+    corsOrigin = parts.length === 1 ? parts[0] : parts.length > 1 ? parts : undefined;
+  }
+
   const cliLogLevel = typeof values['log-level'] === 'string' ? values['log-level'] : undefined;
   const envLogLevel = env.LOG_LEVEL;
   const logLevel = cliLogLevel ?? envLogLevel ?? 'info';
@@ -98,6 +110,7 @@ export function parseConfig(args: string[], env: Record<string, string | undefin
     ...transportConfig,
     resourceStoreUri,
     ...(baseUrl && { baseUrl }),
+    ...(corsOrigin && { corsOrigin }),
     logLevel,
     baseDir,
     name,

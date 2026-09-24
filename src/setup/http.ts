@@ -20,7 +20,7 @@ export async function createHTTPServer(config: ServerConfig, overrides?: Runtime
   registerPrompts(mcpServer, composed.prompts);
 
   const app = express();
-  app.use(cors());
+  app.use(cors({ origin: config.corsOrigin ?? false }));
   app.use(express.json({ limit: '10mb' }));
 
   const fileRouter = createFileServingRouter(

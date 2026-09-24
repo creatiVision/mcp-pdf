@@ -11,6 +11,8 @@ export interface ServerConfig extends BaseServerConfig {
   resourceStoreUri: string;
   baseUrl?: string;
 
+  corsOrigin?: string | string[];
+
   logLevel: string;
   baseDir: string;
   name: string;
