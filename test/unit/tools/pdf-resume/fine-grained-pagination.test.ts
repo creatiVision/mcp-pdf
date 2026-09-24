@@ -1,5 +1,5 @@
 import assert from 'assert';
-import { mkdirSync } from 'fs';
+import { existsSync, mkdirSync, rmSync } from 'fs';
 import { join } from 'path';
 import createTool, { type Input, type Output } from '../../../../src/mcp/tools/pdf-resume.ts';
 import type { ServerConfig } from '../../../../src/types.ts';
@@ -31,11 +31,9 @@ describe('Fine-grained pagination', () => {
   });
 
   after(() => {
-    // Keep files for visual inspection during development
-    // Uncomment to clean up:
-    // if (existsSync(testOutputDir)) {
-    //   rmSync(testOutputDir, { recursive: true, force: true });
-    // }
+    if (existsSync(testOutputDir)) {
+      rmSync(testOutputDir, { recursive: true, force: true });
+    }
   });
 
   it('creates multi-page resume with fine-grained content flow', async () => {
