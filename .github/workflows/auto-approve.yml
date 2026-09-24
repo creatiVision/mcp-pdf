@@ -10,7 +10,7 @@ permissions:
 jobs:
   auto-approve:
     runs-on: ubuntu-latest
-    if: github.actor == 'google-labs-jules[bot]' || github.actor == 'creatiVision'
+    if: (github.actor == 'google-labs-jules[bot]' || github.actor == 'creatiVision') && github.event.pull_request.user.login != github.actor
     steps:
       - name: Approve pull request
         uses: hmarr/auto-approve-action@v4
