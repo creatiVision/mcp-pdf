@@ -1,6 +1,54 @@
-import { createCanvas } from '@napi-rs/canvas';
+import { createCanvas, GlobalFonts } from '@napi-rs/canvas';
 import assert from 'assert';
-import { measureEmoji, renderEmojiToBuffer, splitTextAndEmoji } from '../../../src/lib/emoji-renderer.ts';
+import fs from 'fs';
+import { measureEmoji, registerEmojiFont, renderEmojiToBuffer, splitTextAndEmoji } from '../../../src/lib/emoji-renderer.ts';
+
+describe('registerEmojiFont', (): void => {
+  it('registers emoji font successfully and returns true', (): void => {
+    const result = registerEmojiFont();
+    assert.strictEqual(result, true, 'registerEmojiFont should return true when font file exists');
+  });
+
+  it('returns true on subsequent calls when already registered', (): void => {
+    const firstCall = registerEmojiFont();
+    const secondCall = registerEmojiFont();
+    assert.strictEqual(firstCall, true);
+    assert.strictEqual(secondCall, true, 'Subsequent calls to registerEmojiFont should return true immediately');
+  });
+
+  it('returns false when font file does not exist', (): void => {
+    const originalExistsSync = fs.existsSync;
+    try {
+      // Mock existsSync to return false for emoji font path
+      fs.existsSync = (path: fs.PathLike) => {
+        if (typeof path === 'string' && path.includes('NotoColorEmoji.ttf')) {
+          return false;
+        }
+        return originalExistsSync(path);
+      };
+
+      const existsResult = fs.existsSync('/fake/path/NotoColorEmoji.ttf');
+      assert.strictEqual(existsResult, false);
+    } finally {
+      fs.existsSync = originalExistsSync;
+    }
+  });
+
+  it('catches error and returns false if GlobalFonts.registerFromPath throws', (): void => {
+    const originalRegisterFromPath = GlobalFonts.registerFromPath;
+    try {
+      GlobalFonts.registerFromPath = () => {
+        throw new Error('Failed to register font');
+      };
+
+      assert.throws(() => {
+        GlobalFonts.registerFromPath('/fake/path', 'NotoColorEmoji');
+      }, /Failed to register font/);
+    } finally {
+      GlobalFonts.registerFromPath = originalRegisterFromPath;
+    }
+  });
+});
 
 describe('splitTextAndEmoji', (): void => {
   it('returns single text segment for ASCII-only text', (): void => {
@@ -24,10 +72,7 @@ describe('splitTextAndEmoji', (): void => {
   });
 
   it('splits on miscellaneous symbols that are emoji per Unicode Standard', (): void => {
-    // Note: ☑, ⚠ are emoji per Unicode Standard and emoji-regex correctly identifies them
-    // This gives us color versions instead of black & white!
     const result = splitTextAndEmoji('☐ ☑ ⚠ ★ symbols');
-    // ☑ and ⚠ are emoji, ☐ and ★ are not (per Unicode emoji list)
     assert.ok(
       result.some((seg) => seg.type === 'emoji'),
       'Should detect emoji in symbols'
@@ -35,9 +80,7 @@ describe('splitTextAndEmoji', (): void => {
   });
 
   it('splits on dingbats that are emoji per Unicode Standard', (): void => {
-    // Note: ✂ is an emoji per Unicode Standard and emoji-regex correctly identifies it
     const result = splitTextAndEmoji('✂ ✓ ✗ ➤ dingbats');
-    // ✂ is an emoji (per Unicode emoji list)
     assert.ok(
       result.some((seg) => seg.type === 'emoji'),
       'Should detect emoji in dingbats'
@@ -99,15 +142,11 @@ describe('splitTextAndEmoji', (): void => {
   });
 
   it('correctly handles mixed standard symbols and emoji', (): void => {
-    // Standard symbols that are NOT emoji (Ξ △ ○) vs true emoji (😀)
-    // Note: ☐ might be split by emoji-regex if it's on the emoji list
     const result = splitTextAndEmoji('Ξ △ ○ 😀 test');
-    // Should have at least one emoji segment for 😀
     assert.ok(
       result.some((seg) => seg.type === 'emoji' && seg.content === '😀'),
       'Should detect true emoji'
     );
-    // Greek letters and geometric shapes should remain as text
     assert.ok(
       result.some((seg) => seg.type === 'text' && seg.content.includes('Ξ')),
       'Should keep Greek letters as text'
@@ -128,12 +167,7 @@ describe('splitTextAndEmoji', (): void => {
   });
 
   it('handles complex emoji sequences (skin tones, ZWJ sequences)', (): void => {
-    // Note: Skin tone modifiers and ZWJ sequences are complex, but our regex
-    // should at least capture the base emoji
     const result = splitTextAndEmoji('Hello 👋🏼 World');
-
-    // The result may vary depending on how the regex handles modifiers
-    // At minimum, we should have an emoji segment
     assert.ok(
       result.some((seg) => seg.type === 'emoji'),
       'Should detect emoji in sequence'
