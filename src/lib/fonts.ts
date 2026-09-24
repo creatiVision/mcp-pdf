@@ -1,5 +1,5 @@
 import emojiRegexFactory from 'emoji-regex';
-import { openSync as fontkitOpenSync } from 'fontkit';
+import { openSync as fontkitOpenSync, type Font } from 'fontkit';
 import { existsSync } from 'fs';
 import { mkdir, writeFile } from 'fs/promises';
 import { tmpdir } from 'os';
@@ -225,8 +225,7 @@ export interface CharacterValidationResult {
 }
 
 // Cache for opened fontkit font instances by file path
-// biome-ignore lint/suspicious/noExplicitAny: fontkit Font object
-const fontCache = new Map<string, any>();
+const fontCache = new Map<string, Font | null>();
 
 /**
  * Clear the internal fontkit font instance cache
