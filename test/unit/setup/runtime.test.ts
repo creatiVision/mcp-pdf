@@ -5,18 +5,22 @@ import { createDefaultRuntime, createLogger, createLoggingLayer, createStorageLa
 import type { ServerConfig, StorageContext } from '../../../src/types.ts';
 
 describe('runtime setup', () => {
-  const testBaseDir = path.join('.tmp', `runtime-test-${Date.now()}`);
+  let testBaseDir: string;
+  let baseConfig: ServerConfig;
 
-  const baseConfig: ServerConfig = {
-    name: 'mcp-pdf-test',
-    version: '1.0.0',
-    baseDir: testBaseDir,
-    resourceStoreUri: `file://${path.resolve(testBaseDir, 'files')}`,
-    logLevel: 'info',
-    transport: {
-      type: 'stdio',
-    },
-  };
+  beforeEach(() => {
+    testBaseDir = path.join('.tmp', `runtime-test-${Date.now()}-${Math.random().toString(36).substring(2, 7)}`);
+    baseConfig = {
+      name: 'mcp-pdf-test',
+      version: '1.0.0',
+      baseDir: testBaseDir,
+      resourceStoreUri: `file://${path.resolve(testBaseDir, 'files')}`,
+      logLevel: 'info',
+      transport: {
+        type: 'stdio',
+      },
+    };
+  });
 
   afterEach(() => {
     if (fs.existsSync(testBaseDir)) {
