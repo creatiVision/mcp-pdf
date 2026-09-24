@@ -1,3 +1,5 @@
+import { homedir } from 'os';
+import path from 'path';
 import assert from 'assert';
 import { createConfig, handleVersionHelp, parseConfig } from '../../../src/setup/config.ts';
 
@@ -99,6 +101,19 @@ describe('Config parsing', () => {
     });
   });
 
+
+  describe('findConfigPath error handling', () => {
+    it('falls back to homedir when findConfigPath fails', () => {
+      const originalCwd = process.cwd;
+      process.cwd = () => '/non/existent/path/for/config/testing';
+      try {
+        const config = parseConfig([], {});
+        assert.strictEqual(config.baseDir, path.join(homedir(), '.mcp-z'));
+      } finally {
+        process.cwd = originalCwd;
+      }
+    });
+  });
   describe('handleVersionHelp handling', () => {
     it('handles --version flag', () => {
       const result = handleVersionHelp(['node', 'script', '--version']);
