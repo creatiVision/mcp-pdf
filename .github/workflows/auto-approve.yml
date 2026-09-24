@@ -10,10 +10,21 @@ permissions:
 jobs:
   auto-approve:
     runs-on: ubuntu-latest
-    if: github.actor == 'google-labs-jules[bot]' || github.actor == 'creatiVision'
+    if: github.actor == "google-labs-jules[bot]" || github.actor == "creatiVision"
     steps:
       - name: Approve pull request
-        uses: hmarr/auto-approve-action@v4
-        continue-on-error: true
+        uses: actions/github-script@v7
         with:
-          review-message: 'Auto-approved: green CI + automated PR from Jules/owner.'
+          script: |
+            try {
+              await github.rest.pulls.createReview({
+                owner: context.repo.owner,
+                repo: context.repo.repo,
+                pull_number: context.payload.pull_request.number,
+                event: "APPROVE",
+                body: "Auto-approved: green CI + automated PR from Jules/owner."
+              });
+              console.log("Successfully approved pull request");
+            } catch (error) {
+              console.warn("Auto-approval skipped or failed:", error.message);
+            }
