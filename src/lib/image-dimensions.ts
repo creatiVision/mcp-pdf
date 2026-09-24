@@ -102,13 +102,24 @@ async function getLocalImageDimensionsAsync(imagePath: string): Promise<ImageDim
  */
 function getLocalImageDimensions(imagePath: string): ImageDimensions | null {
   try {
-    const resolvedPath = path.isAbsolute(imagePath) ? imagePath : path.resolve(process.cwd(), imagePath);
+    const cwd = process.cwd();
+    // Resolve relative paths
+    const resolvedPath = path.isAbsolute(imagePath) ? path.resolve(imagePath) : path.resolve(cwd, imagePath);
+
+    // Prevent path traversal outside working directory
+    const relative = path.relative(cwd, resolvedPath);
+    if (relative.startsWith("..") || path.isAbsolute(relative)) {
+      return null;
+    }
 
     if (!fs.existsSync(resolvedPath)) {
       return null;
     }
 
     const stat = fs.statSync(resolvedPath);
+    if (!stat.isFile()) {
+      return null;
+    }
     const cached = dimensionCache.get(resolvedPath);
     if (cached && cached.mtimeMs === stat.mtimeMs) {
       return cached.dimensions;

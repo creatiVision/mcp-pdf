@@ -1,6 +1,7 @@
 import { createCanvas } from '@napi-rs/canvas';
 import assert from 'assert';
 import fs, { existsSync, mkdirSync, rmSync, writeFileSync } from 'fs';
+import os from 'os';
 import path, { join } from 'path';
 import { clearImageDimensionsCache, resolveImageDimensions, resolveImageDimensionsAsync } from '../../../src/lib/image-dimensions.ts';
 
@@ -29,6 +30,27 @@ describe('resolveImageDimensions security tests', () => {
   it('allows explicit width and height even if image path is outside cwd', () => {
     const dims = resolveImageDimensions('/etc/passwd', 200, 300);
     assert.deepStrictEqual(dims, { width: 200, height: 300 });
+  });
+
+  it('blocks path traversal attempts when a valid image exists outside cwd', async () => {
+    const outOfBoundsPath = path.join(os.tmpdir(), 'out-of-bounds-test.png');
+    const pngHeaderHex = '89504e470d0a1a0a0000000d494844520000000a0000000a08060000008d32cfbd0000000d49444154789c6360000000020001e527defc0000000049454e44ae426082';
+    fs.writeFileSync(outOfBoundsPath, Buffer.from(pngHeaderHex, 'hex'));
+
+    try {
+      assert.throws(() => {
+        resolveImageDimensions(outOfBoundsPath);
+      }, /Cannot determine image dimensions for/);
+
+      await assert.rejects(
+        async () => await resolveImageDimensionsAsync(outOfBoundsPath),
+        /Cannot determine image dimensions for/
+      );
+    } finally {
+      if (fs.existsSync(outOfBoundsPath)) {
+        fs.unlinkSync(outOfBoundsPath);
+      }
+    }
   });
 });
 describe('resolveImageDimensions', (): void => {
