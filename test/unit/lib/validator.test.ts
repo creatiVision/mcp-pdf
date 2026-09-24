@@ -202,5 +202,47 @@ describe('validator', () => {
       assert.strictEqual(res1.valid, true);
       assert.strictEqual(res2.valid, true);
     });
+
+    it('handles exceptions thrown during validation (Error instance)', () => {
+      const throwingResume = {
+        get basics() {
+          throw new Error('Getter error during validation');
+        },
+      };
+
+      const result = validateResume(throwingResume);
+      assert.strictEqual(result.valid, false);
+      assert.ok(Array.isArray(result.errors));
+      assert.strictEqual(result.errors.length, 1);
+      assert.strictEqual(
+        result.errors[0],
+        'Schema validation setup failed: Getter error during validation'
+      );
+    });
+
+    it('handles non-Error exceptions thrown during validation', () => {
+      const throwingResume = {
+        get basics() {
+          throw 'String error during validation';
+        },
+      };
+
+      const result = validateResume(throwingResume);
+      assert.strictEqual(result.valid, false);
+      assert.ok(Array.isArray(result.errors));
+      assert.strictEqual(result.errors.length, 1);
+      assert.strictEqual(
+        result.errors[0],
+        'Schema validation setup failed: Unknown error'
+      );
+    });
+
+    it('handles validation error formatting edge cases', () => {
+      // Test invalid object structure
+      const result = validateResume({ basics: 123 });
+      assert.strictEqual(result.valid, false);
+      assert.ok(Array.isArray(result.errors));
+      assert.ok(result.errors.length > 0);
+    });
   });
 });
