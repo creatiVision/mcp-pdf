@@ -1,6 +1,6 @@
 {
   "name": "@mcp-z/mcp-pdf",
-  "version": "2.0.7",
+  "version": "3.2.2",
   "description": "MCP server for creative PDF generation with full emoji, Unicode, and offline support",
   "keywords": [
     "pdf",
@@ -34,72 +34,72 @@
   "author": "Kevin Malakoff <kmalakoff.info@gmail.com>",
   "type": "module",
   "exports": {
-    ".": {
-      "import": "./dist/esm/index.js",
-      "require": "./dist/cjs/index.js"
-    },
+    ".": "./dist/esm/index.js",
     "./package.json": "./package.json"
   },
-  "main": "./dist/cjs/index.js",
-  "module": "./dist/esm/index.js",
+  "main": "./dist/esm/index.js",
   "types": "./dist/esm/index.d.ts",
   "bin": "bin/server.js",
   "files": [
     "dist",
-    "bin",
-    "assets",
-    "scripts"
+    "assets"
   ],
   "scripts": {
     "build": "tsds build",
     "format": "tsds format",
     "generate:types": "json2ts assets/resume.schema.json assets/resume.d.ts --bannerComment \"/* eslint-disable */\n/* Auto-generated from assets/resume.schema.json - DO NOT EDIT */\"",
-    "postinstall": "node scripts/postinstall.cjs",
     "prepublish:check": "ncp",
-    "prepublishOnly": "tsds validate",
-    "test": "tsds test:node --no-timeouts 'test/**/*.test.ts'",
-    "test:engines": "nvu engines tsds test:node --no-timeouts 'test/**/*.test.ts'",
+    "prepublishOnly": "node scripts/require-dist-tag.cjs && tsds validate",
+    "test": "tsds test:node --no-timeouts",
+    "test:ci": "tsds test:node --no-timeouts",
+    "test:ci:engines": "nvu engines tsds test:node --no-timeouts",
+    "test:engines": "nvu engines tsds test:node --no-timeouts",
     "version": "tsds version"
   },
   "dependencies": {
-    "@mcp-z/server": "^1.0.0",
-    "@modelcontextprotocol/sdk": "^1.0.0",
-    "@napi-rs/canvas": "^0.1.0",
+    "@mcp-z/server": "^2.2.0",
+    "@napi-rs/canvas": "^1.0.7",
     "ajv": "^8.0.0",
     "ajv-formats": "^3.0.0",
     "cors": "^2.0.0",
-    "emoji-regex": "^10.0.0",
+    "emoji-regex": "^11.0.0",
     "express": "^5.0.0",
     "fontkit": "^2.0.0",
-    "image-size": "^2.0.0",
     "liquidjs": "^10.0.0",
     "mdast-util-from-markdown": "^2.0.2",
     "module-root-sync": "^2.0.0",
-    "pdf-to-png-converter": "^3.0.0",
-    "pdfkit": "^0.17.0",
+    "pdf-to-png-converter": "^4.2.0",
+    "pdfkit": "^0.20.1",
     "pino": "^10.0.0",
     "unist-util-visit": "^5.0.0",
     "yoga-layout": "^3.0.0",
-    "zod": "^4.0.0"
+    "zod": "^4.2.0"
   },
   "devDependencies": {
+    "@modelcontextprotocol/client": "^2.0.0",
+    "@modelcontextprotocol/sdk": "^1.30.0",
     "@types/cors": "^2.8.19",
     "@types/express": "^5.0.6",
     "@types/fontkit": "^2.0.8",
     "@types/mocha": "^10.0.10",
-    "@types/node": "^25.0.3",
+    "@types/node": "^26.2.0",
     "@types/pdfkit": "^0.17.4",
     "@types/unist": "^3.0.3",
-    "json-schema-to-typescript": "^15.0.4",
+    "fs-remove-compat": "^1.0.4",
+    "get-port": "7.2.0",
+    "json-schema-to-typescript": "^16.0.0",
     "node-version-use": "^2.4.7",
     "ts-dev-stack": "^1.22.1",
     "tsds-config": "^1.0.4"
   },
   "engines": {
-    "node": ">=20"
+    "node": ">=22.13"
   },
   "mcpName": "io.github.mcp-z/mcp-pdf",
   "tsds": {
-    "source": "src/index.ts"
+    "source": "src/index.ts",
+    "targets": [
+      "esm"
+    ]
   }
 }

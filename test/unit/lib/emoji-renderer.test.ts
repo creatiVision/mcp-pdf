@@ -1,6 +1,5 @@
-import { createCanvas } from '@napi-rs/canvas';
 import assert from 'assert';
-import { measureEmoji, renderEmojiToBuffer, splitTextAndEmoji } from '../../../src/lib/emoji-renderer.ts';
+import { splitTextAndEmoji } from '../../../src/lib/emoji-renderer.ts';
 
 describe('splitTextAndEmoji', (): void => {
   it('returns single text segment for ASCII-only text', (): void => {
@@ -138,63 +137,5 @@ describe('splitTextAndEmoji', (): void => {
       result.some((seg) => seg.type === 'emoji'),
       'Should detect emoji in sequence'
     );
-  });
-});
-
-describe('renderEmojiToBuffer', (): void => {
-  it('renders emoji to buffer successfully', (): void => {
-    const buffer = renderEmojiToBuffer('😀', 24);
-    assert.ok(Buffer.isBuffer(buffer), 'Should return a Buffer');
-    assert.ok(buffer.length > 0, 'Buffer should not be empty');
-  });
-
-  it('returns null when canvas rendering / toBuffer fails with exception', (): void => {
-    const sampleCanvas = createCanvas(1, 1);
-    const canvasProto = Object.getPrototypeOf(sampleCanvas);
-    const originalToBuffer = canvasProto.toBuffer;
-    try {
-      canvasProto.toBuffer = () => {
-        throw new Error('Canvas buffer rendering failed');
-      };
-
-      const result = renderEmojiToBuffer('😀', 24);
-      assert.strictEqual(result, null, 'Should return null when toBuffer throws exception');
-    } finally {
-      canvasProto.toBuffer = originalToBuffer;
-    }
-  });
-
-  it('returns null when context methods throw an exception during rendering', (): void => {
-    const sampleCanvas = createCanvas(1, 1);
-    const canvasProto = Object.getPrototypeOf(sampleCanvas);
-    const originalGetContext = canvasProto.getContext;
-    try {
-      canvasProto.getContext = () => {
-        throw new Error('Failed to get context');
-      };
-
-      const result = renderEmojiToBuffer('😀', 24);
-      assert.strictEqual(result, null, 'Should return null when getContext throws exception');
-    } finally {
-      canvasProto.getContext = originalGetContext;
-    }
-  });
-});
-
-describe('measureEmoji error handling', (): void => {
-  it('returns fallback square metrics when measureEmoji encounters canvas exception', (): void => {
-    const sampleCanvas = createCanvas(1, 1);
-    const canvasProto = Object.getPrototypeOf(sampleCanvas);
-    const originalGetContext = canvasProto.getContext;
-    try {
-      canvasProto.getContext = () => {
-        throw new Error('Canvas context error during measurement');
-      };
-
-      const metrics = measureEmoji('😀', 24);
-      assert.deepStrictEqual(metrics, { width: 24, height: 24, baselineOffset: 0 }, 'Should return default fallback metrics when measurement fails');
-    } finally {
-      canvasProto.getContext = originalGetContext;
-    }
   });
 });

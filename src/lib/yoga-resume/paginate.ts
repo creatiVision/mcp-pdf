@@ -62,6 +62,82 @@ function toPageNode(node: ResumeLayoutNode, yOffset: number): PageNode {
 }
 
 /**
+ * Split layout nodes into pages.
+ *
+ * Algorithm:
+ * 1. Process nodes in order, tracking current Y position
+ * 2. When a node would overflow the page, start a new page
+ * 3. Adjust Y positions so each page starts at margins.top
+ *
+ * @param nodes - Computed layout nodes from Yoga
+ * @param config - Page configuration
+ * @returns Array of pages with adjusted node positions
+ */
+export function paginateLayout(nodes: ResumeLayoutNode[], config: PageConfig = DEFAULT_PAGE_CONFIG): Page[] {
+  const contentHeight = getContentHeight(config);
+  const pageBottom = config.margins.top + contentHeight;
+
+  const pages: Page[] = [{ number: 0, nodes: [] }];
+  let currentPage = 0;
+  let pageStartY = 0; // Y offset for current page
+
+  for (const node of nodes) {
+    const nodeTop = node.y;
+    const _nodeBottom = node.y + node.height;
+    const nodeHeight = node.height;
+
+    // Check if node fits on current page
+    // Note: nodeTop already includes margins.top from Yoga layout
+    const currentPageY = nodeTop - pageStartY;
+    const nodeBottomOnPage = currentPageY + nodeHeight;
+    const fitsOnPage = nodeBottomOnPage <= pageBottom;
+
+    // Check if this is an atomic group that should stay together
+    const _isAtomic = isAtomicGroup(node.element);
+
+    if (!fitsOnPage) {
+      // Node doesn't fit - start new page
+      currentPage++;
+      pages.push({ number: currentPage, nodes: [] });
+
+      // New page starts at the top margin
+      // Calculate offset so this node starts at margins.top
+      pageStartY = nodeTop - config.margins.top;
+    }
+
+    // Add node to current page with adjusted Y
+    const pageNode = toPageNode(node, pageStartY);
+    pages[currentPage].nodes.push(pageNode);
+  }
+
+  return pages;
+}
+
+/**
+ * Check if a node would cause a page break at the given Y position.
+ * Note: nodeY should already include margins.top from Yoga layout.
+ */
+export function wouldCausePageBreak(nodeY: number, nodeHeight: number, currentPageStartY: number, config: PageConfig): boolean {
+  const contentHeight = getContentHeight(config);
+  const pageBottom = config.margins.top + contentHeight;
+  const nodeBottomOnPage = nodeY - currentPageStartY + nodeHeight;
+
+  return nodeBottomOnPage > pageBottom;
+}
+
+/**
+ * Calculate the Y offset for a new page.
+ *
+ * @param nodeY - The Y position of the node that triggered the page break
+ * @param config - Page configuration
+ * @returns The Y offset to subtract from nodes on the new page
+ */
+export function calculateNewPageOffset(nodeY: number, config: PageConfig): number {
+  // The node should start at the top margin of the new page
+  return nodeY - config.margins.top;
+}
+
+/**
  * Flatten a node tree into paginatable units.
  *
  * For non-atomic groups, we need to paginate their children individually.
@@ -88,46 +164,6 @@ function flattenToPaginatableUnits(nodes: ResumeLayoutNode[]): ResumeLayoutNode[
   }
 
   return result;
-}
-
-/**
- * Split layout nodes into pages.
- *
- * Algorithm:
- * 1. Process nodes (flattening non-atomic groups to recursively check/paginate children) in order, tracking current Y position
- * 2. When a node would overflow the page, start a new page
- * 3. Adjust Y positions so each page starts at margins.top
- *
- * @param nodes - Computed layout nodes from Yoga
- * @param config - Page configuration
- * @returns Array of pages with adjusted node positions
- */
-export function paginateLayout(nodes: ResumeLayoutNode[], config: PageConfig = DEFAULT_PAGE_CONFIG): Page[] {
-  return paginateLayoutWithAtomicGroups(nodes, config);
-}
-
-/**
- * Check if a node would cause a page break at the given Y position.
- * Note: nodeY should already include margins.top from Yoga layout.
- */
-export function wouldCausePageBreak(nodeY: number, nodeHeight: number, currentPageStartY: number, config: PageConfig): boolean {
-  const contentHeight = getContentHeight(config);
-  const pageBottom = config.margins.top + contentHeight;
-  const nodeBottomOnPage = nodeY - currentPageStartY + nodeHeight;
-
-  return nodeBottomOnPage > pageBottom;
-}
-
-/**
- * Calculate the Y offset for a new page.
- *
- * @param nodeY - The Y position of the node that triggered the page break
- * @param config - Page configuration
- * @returns The Y offset to subtract from nodes on the new page
- */
-export function calculateNewPageOffset(nodeY: number, config: PageConfig): number {
-  // The node should start at the top margin of the new page
-  return nodeY - config.margins.top;
 }
 
 /**

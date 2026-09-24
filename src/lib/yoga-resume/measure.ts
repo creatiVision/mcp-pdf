@@ -145,7 +145,7 @@ export function measureHeader(ctx: MeasureContext, element: HeaderElement): numb
   if (element.contactItems.length > 0) {
     const contactTexts = element.contactItems
       .map((item) => {
-        return item.location ? renderField(fieldTemplates.location, item.location as Record<string, unknown>) : item.text;
+        return item.location ? renderField(fieldTemplates.location, item.location) : item.text;
       })
       .filter((text) => text.length > 0);
 

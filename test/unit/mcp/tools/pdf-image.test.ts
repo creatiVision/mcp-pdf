@@ -3,31 +3,21 @@
  */
 
 import assert from 'assert';
-import { existsSync, mkdirSync, rmSync, writeFileSync } from 'fs';
+import { existsSync, mkdirSync, writeFileSync } from 'fs';
+import { safeRmSync } from 'fs-remove-compat';
 import { join } from 'path';
 import PDFDocument from 'pdfkit';
 import createTool from '../../../../src/mcp/tools/pdf-image.ts';
-import type { ServerConfig } from '../../../../src/types.ts';
 import { createExtra } from '../../../lib/create-extra.ts';
+import { createTestConfig } from '../../../lib/create-test-config.ts';
 
-// Use .tmp/ in package root per QUALITY.md rule T8
+// Use .tmp/ in package root, never os.tmpdir() (testing-standards)
 const testOutputDir = join(process.cwd(), '.tmp', 'pdf-image-tests');
 const testStorageDir = join(testOutputDir, 'storage');
 const testPdfPath = join(testOutputDir, 'test-document.pdf');
 
-function createTestConfig(): ServerConfig {
-  return {
-    name: 'mcp-pdf-test',
-    version: '1.0.0',
-    logLevel: 'silent',
-    baseDir: testOutputDir,
-    resourceStoreUri: `file://${testStorageDir}`,
-    transport: { type: 'stdio' },
-  };
-}
-
 describe('pdf-image tool', () => {
-  const config = createTestConfig();
+  const config = createTestConfig(testOutputDir, testStorageDir);
   const tool = createTool();
   const extra = createExtra(config);
 
@@ -55,7 +45,7 @@ describe('pdf-image tool', () => {
 
   after(() => {
     if (existsSync(testOutputDir)) {
-      rmSync(testOutputDir, { recursive: true, force: true });
+      safeRmSync(testOutputDir, { recursive: true, force: true });
     }
   });
 

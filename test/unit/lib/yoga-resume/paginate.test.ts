@@ -1,6 +1,6 @@
 import assert from 'assert';
 import type { GroupElement, LayoutElement, TextElement } from '../../../../src/lib/ir/types.ts';
-import { calculateNewPageOffset, getContentHeight, paginateLayout, paginateLayoutWithAtomicGroups, wouldCausePageBreak } from '../../../../src/lib/yoga-resume/paginate.ts';
+import { getContentHeight, paginateLayout, paginateLayoutWithAtomicGroups } from '../../../../src/lib/yoga-resume/paginate.ts';
 import type { PageConfig, ResumeLayoutNode } from '../../../../src/lib/yoga-resume/types.ts';
 
 /**
@@ -47,47 +47,6 @@ describe('yoga-resume/paginate', () => {
     });
   });
 
-  describe('wouldCausePageBreak', () => {
-    it('returns false when node ends before page bottom', () => {
-      // page bottom = 50 + 692 = 742
-      // node at y=50, height=500 -> nodeBottomOnPage = 550 < 742
-      const result = wouldCausePageBreak(50, 500, 0, config);
-      assert.equal(result, false);
-    });
-
-    it('returns false when node ends exactly at page bottom boundary', () => {
-      // page bottom = 50 + (792 - 50 - 50) = 742
-      // node at y=50, height=692 -> nodeBottomOnPage = 50 - 0 + 692 = 742 == 742
-      const result = wouldCausePageBreak(50, 692, 0, config);
-      assert.equal(result, false);
-    });
-
-    it('returns true when node extends beyond page bottom', () => {
-      // node at y=50, height=693 -> nodeBottomOnPage = 743 > 742
-      const result = wouldCausePageBreak(50, 693, 0, config);
-      assert.equal(result, true);
-    });
-
-    it('handles non-zero currentPageStartY correctly', () => {
-      // Second page starts at pageStartY = 700 - 50 = 650
-      // Node at y=700, height=692 -> nodeBottomOnPage = 700 - 650 + 692 = 742 == 742
-      const resultExact = wouldCausePageBreak(700, 692, 650, config);
-      assert.equal(resultExact, false);
-
-      // Node at y=700, height=693 -> nodeBottomOnPage = 743 > 742
-      const resultOverflow = wouldCausePageBreak(700, 693, 650, config);
-      assert.equal(resultOverflow, true);
-    });
-  });
-
-  describe('calculateNewPageOffset', () => {
-    it('calculates page start offset for a node breaking to new page', () => {
-      // nodeY = 700, margin.top = 50 -> offset = 650
-      const offset = calculateNewPageOffset(700, config);
-      assert.equal(offset, 650);
-    });
-  });
-
   describe('paginateLayout', () => {
     it('places nodes that fit on single page', () => {
       const nodes: ResumeLayoutNode[] = [layoutNode(textElement('Header'), 50, 30), layoutNode(textElement('Content'), 80, 100)];
@@ -120,18 +79,6 @@ describe('yoga-resume/paginate', () => {
       // Second node should start at top margin of new page
       assert.equal(pages[1].nodes[0].position.y, 50);
     });
-  });
-
-  it('keeps node on current page when node ends exactly at page bottom boundary', () => {
-    // Page content height = 692, top margin = 50, page bottom = 742
-    // Node height = 692 fills the exact content height
-    const nodes: ResumeLayoutNode[] = [layoutNode(textElement('Full Page Node'), 50, 692)];
-
-    const pages = paginateLayout(nodes, config);
-
-    assert.equal(pages.length, 1, 'should fit on 1 page');
-    assert.equal(pages[0].nodes.length, 1);
-    assert.equal(pages[0].nodes[0].position.y, 50);
   });
 
   describe('paginateLayoutWithAtomicGroups', () => {

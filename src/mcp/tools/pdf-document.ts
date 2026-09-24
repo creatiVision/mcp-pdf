@@ -10,14 +10,13 @@
  * Default margins: 72pt (1 inch) for standard document formatting.
  */
 
-import { getFileUri, type ToolModule, writeFile } from '@mcp-z/server';
-import { type CallToolResult, ErrorCode, McpError } from '@modelcontextprotocol/sdk/types.js';
+import { type CallToolResult, getFileUri, ProtocolError, ProtocolErrorCode, type ToolModule, writeFile } from '@mcp-z/server';
 import PDFDocument from 'pdfkit';
 import { z } from 'zod';
 import { DEFAULT_HEADING_FONT_SIZE, DEFAULT_TEXT_FONT_SIZE, getDefaultMargins, type Margins, type PageSizePreset } from '../../constants.ts';
 import { registerEmojiFont } from '../../lib/emoji-renderer.ts';
 import { hasEmoji, setupFonts, validateTextForFont } from '../../lib/fonts.ts';
-import { resolveImageDimensionsAsync } from '../../lib/image-dimensions.ts';
+import { resolveImageDimensions } from '../../lib/image-dimensions.ts';
 import { extractTextOptions, type PDFOutput, pdfOutputSchema, resolvePageSize } from '../../lib/pdf-core.ts';
 import { renderText, type TextRenderConfig } from '../../lib/pdf-helpers.ts';
 import { flowingContentItemSchema } from '../../schemas/content.ts';
@@ -212,7 +211,7 @@ export default function createTool() {
           }
 
           case 'image': {
-            const dimensions = await resolveImageDimensionsAsync(
+            const dimensions = resolveImageDimensions(
               item.imagePath,
               item.width ?? contentWidth, // Default to content width
               item.height
@@ -305,7 +304,7 @@ export default function createTool() {
       };
     } catch (error) {
       const message = error instanceof Error ? error.message : String(error);
-      throw new McpError(ErrorCode.InternalError, `Error creating PDF document: ${message}`, {
+      throw new ProtocolError(ProtocolErrorCode.InternalError, `Error creating PDF document: ${message}`, {
         stack: error instanceof Error ? error.stack : undefined,
       });
     }
