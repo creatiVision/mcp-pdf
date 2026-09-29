@@ -44,9 +44,13 @@ const inputSchema = z.object({
   pageSetup: z
     .object({
       size: z
-        .union([z.enum(['LETTER', 'A4', 'LEGAL']), z.tuple([z.number(), z.number()])])
+        .enum(['LETTER', 'A4', 'LEGAL'])
         .optional()
-        .describe('Page size preset or custom [width, height] in points. LETTER: 612×792pt (8.5×11in). A4: 595×842pt (210×297mm). LEGAL: 612×1008pt (8.5×14in). Default: LETTER.'),
+        .describe('Page size preset. LETTER: 612×792pt (8.5×11in). A4: 595×842pt (210×297mm). LEGAL: 612×1008pt (8.5×14in). Default: LETTER. Use customSize for non-standard dimensions.'),
+      customSize: z
+        .tuple([z.number(), z.number()])
+        .optional()
+        .describe('Custom page size as [width, height] in points. Use this instead of size for non-standard dimensions.'),
       margins: z
         .object({
           top: z.number(),
@@ -106,7 +110,9 @@ export default function createTool() {
           title,
           author,
           subject: filename,
-          pageSize: pageSetup?.size as PageSizePreset | [number, number] | undefined,
+          pageSize: pageSetup?.customSize
+            ? { width: pageSetup.customSize[0], height: pageSetup.customSize[1] }
+            : (pageSetup?.size as PageSizePreset | undefined),
           margins: pageSetup?.margins ?? { top: 0, bottom: 0, left: 0, right: 0 },
           backgroundColor: color?.background,
         },
