@@ -79,6 +79,24 @@ describe('yoga-resume/paginate', () => {
       // Second node should start at top margin of new page
       assert.equal(pages[1].nodes[0].position.y, 50);
     });
+
+    it("flattens non-atomic nested groups and paginates overflowing children", () => {
+      const pageBottom = config.margins.top + getContentHeight(config); // 742
+
+      const parentGroup = groupElement([textElement("Child 1"), textElement("Child 2")], true);
+      const parentNode = layoutNode(parentGroup, 50, 800, [
+        layoutNode(textElement("Child 1"), 50, 600),
+        layoutNode(textElement("Child 2"), 650, 200),
+      ]);
+
+      const pages = paginateLayout([parentNode], config);
+
+      assert.equal(pages.length, 2);
+      assert.equal(pages[0].nodes.length, 1);
+      assert.equal(pages[1].nodes.length, 1);
+      assert.ok(pages[0].nodes[0].position.y + pages[0].nodes[0].position.height <= pageBottom);
+      assert.ok(pages[1].nodes[0].position.y + pages[1].nodes[0].position.height <= pageBottom);
+    });
   });
 
   describe('paginateLayoutWithAtomicGroups', () => {
@@ -260,6 +278,31 @@ describe('yoga-resume/paginate', () => {
 
       // Verify entry 3 is repositioned at top of page 2
       assert.equal(pages[1].nodes[0].position.y, 50, 'entry 3 should start at top margin');
+    });
+
+    it("should split oversized atomic group whose height exceeds a single page", () => {
+      const pageBottom = config.margins.top + getContentHeight(config); // 742
+
+      // Atomic group (wrap=false) but total height 800 > contentHeight 692
+      const oversizedAtomicGroup = groupElement([textElement("Child 1"), textElement("Child 2")], false);
+      const parentNode = layoutNode(oversizedAtomicGroup, 50, 800, [
+        layoutNode(textElement("Child 1"), 50, 600),
+        layoutNode(textElement("Child 2"), 650, 200),
+      ]);
+
+      const pages = paginateLayoutWithAtomicGroups([parentNode], config);
+
+      assert.ok(pages.length >= 2, "should create at least 2 pages");
+      for (let pageIndex = 0; pageIndex < pages.length; pageIndex++) {
+        const page = pages[pageIndex];
+        for (const node of page.nodes) {
+          const nodeBottom = node.position.y + node.position.height;
+          assert.ok(
+            nodeBottom <= pageBottom,
+            `Page ${pageIndex + 1}: Node bottom (${nodeBottom}) exceeds page bottom (${pageBottom})`
+          );
+        }
+      }
     });
   });
 });
