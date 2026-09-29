@@ -47,7 +47,7 @@ const inputSchema = z.object({
         .optional()
         .describe('Page size preset. LETTER: 612×792pt (8.5×11in). A4: 595×842pt (210×297mm). LEGAL: 612×1008pt (8.5×14in). Default: LETTER. Use customSize for non-standard dimensions.'),
       customSize: z
-        .tuple([z.number(), z.number()])
+        .array(z.number()).length(2)
         .optional()
         .describe('Custom page size as [width, height] in points. Use this instead of size for non-standard dimensions.'),
       margins: z
