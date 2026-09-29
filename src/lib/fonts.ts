@@ -1,5 +1,5 @@
 import emojiRegexFactory from 'emoji-regex';
-import { type Font, openSync as fontkitOpenSync } from 'fontkit';
+import { openSync as fontkitOpenSync, type Font } from 'fontkit';
 import { existsSync } from 'fs';
 import { mkdir, writeFile } from 'fs/promises';
 import { tmpdir } from 'os';
@@ -56,7 +56,7 @@ export function hasEmoji(text: string): boolean {
  * Returns path to first found Unicode-capable font, or null if none found
  * Prioritizes fonts with known CJK (Chinese/Japanese/Korean) support
  */
-let cachedSystemFont: string | null | undefined;
+let cachedSystemFont: string | null | undefined = undefined;
 
 /**
  * Auto-detect a system font with Unicode support

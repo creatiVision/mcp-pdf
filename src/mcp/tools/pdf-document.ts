@@ -42,8 +42,14 @@ const inputSchema = z.object({
     .describe('Color settings for the PDF'),
   pageSetup: z
     .object({
-      size: z.enum(['LETTER', 'A4', 'LEGAL']).optional().describe('Page size preset. LETTER: 612×792pt (8.5×11in). A4: 595×842pt (210×297mm). LEGAL: 612×1008pt (8.5×14in). Default: LETTER. Use customSize for non-standard dimensions.'),
-      customSize: z.array(z.number()).length(2).optional().describe('Custom page size as [width, height] in points. Use this instead of size for non-standard dimensions.'),
+      size: z
+        .enum(['LETTER', 'A4', 'LEGAL'])
+        .optional()
+        .describe('Page size preset. LETTER: 612×792pt (8.5×11in). A4: 595×842pt (210×297mm). LEGAL: 612×1008pt (8.5×14in). Default: LETTER. Use customSize for non-standard dimensions.'),
+      customSize: z
+        .array(z.number()).length(2)
+        .optional()
+        .describe('Custom page size as [width, height] in points. Use this instead of size for non-standard dimensions.'),
       margins: z
         .object({
           top: z.number(),
@@ -102,7 +108,9 @@ export default function createTool() {
     try {
       // Resolve page size and margins
       const sizePreset = typeof pageSetup?.size === 'string' ? (pageSetup.size as PageSizePreset) : 'LETTER';
-      const resolvedPageSize = pageSetup?.customSize ? { width: pageSetup.customSize[0], height: pageSetup.customSize[1] } : resolvePageSize(sizePreset);
+      const resolvedPageSize = pageSetup?.customSize
+        ? { width: pageSetup.customSize[0], height: pageSetup.customSize[1] }
+        : resolvePageSize(sizePreset);
       const margins = pageSetup?.margins ?? getDefaultMargins(sizePreset);
 
       const docOptions = {

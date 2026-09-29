@@ -156,7 +156,10 @@ describe('pdf-image tool', () => {
       assert.fail('Should have thrown an error for corrupt PDF');
     } catch (error) {
       assert.ok(error instanceof Error);
-      assert.ok(error.message.includes('Error generating PDF image') || error.message.includes('Failed to render'));
+      assert.ok(
+        error.message.includes('Error generating PDF image') ||
+        error.message.includes('Failed to render')
+      );
     }
   });
 
