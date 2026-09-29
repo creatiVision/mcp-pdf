@@ -13,6 +13,7 @@ jobs:
     if: github.actor == 'google-labs-jules[bot]' || github.actor == 'creatiVision'
     steps:
       - name: Approve pull request
+        continue-on-error: true
         uses: hmarr/auto-approve-action@v4
         with:
           review-message: 'Auto-approved: green CI + automated PR from Jules/owner.'
