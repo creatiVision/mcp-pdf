@@ -12,7 +12,7 @@
 
 import type PDFKit from 'pdfkit';
 import { measureTextHeight } from '../content-measure.ts';
-import { renderField } from '../formatting.ts';
+import { paragraphsFromContent, renderField } from '../formatting.ts';
 import type {
   CompanyHeaderElement,
   CredentialData,
@@ -65,17 +65,7 @@ function getResolvedStyle(typography: TypographyOptions) {
   };
 }
 
-/**
- * Convert content to array of paragraphs.
- */
-function paragraphsFromContent(content: string | string[] | undefined): string[] {
-  if (!content) return [];
-  if (Array.isArray(content)) return content.filter(Boolean);
-  return content
-    .split(/\n\n+/)
-    .map((p) => p.trim())
-    .filter(Boolean);
-}
+
 
 // =============================================================================
 // Element Measurers
