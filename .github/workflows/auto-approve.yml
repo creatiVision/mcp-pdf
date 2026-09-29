@@ -14,5 +14,6 @@ jobs:
     steps:
       - name: Approve pull request
         uses: hmarr/auto-approve-action@v4
+        continue-on-error: true
         with:
           review-message: 'Auto-approved: green CI + automated PR from Jules/owner.'
