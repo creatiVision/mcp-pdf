@@ -13,7 +13,18 @@ jobs:
     if: github.actor == 'google-labs-jules[bot]' || github.actor == 'creatiVision'
     steps:
       - name: Approve pull request
-        uses: hmarr/auto-approve-action@v4
+        uses: actions/github-script@v7
         continue-on-error: true
         with:
-          review-message: 'Auto-approved: green CI + automated PR from Jules/owner.'
+          script: |
+            try {
+              await github.rest.pulls.createReview({
+                owner: context.repo.owner,
+                repo: context.repo.repo,
+                pull_number: context.issue.number,
+                event: 'APPROVE',
+                body: 'Auto-approved: green CI + automated PR from Jules/owner.'
+              });
+            } catch (error) {
+              console.log('Auto-approve skipped or failed:', error.message);
+            }
