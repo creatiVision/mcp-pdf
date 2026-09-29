@@ -111,7 +111,7 @@ export default function createTool() {
           author,
           subject: filename,
           pageSize: pageSetup?.customSize
-            ? { width: pageSetup.customSize[0], height: pageSetup.customSize[1] }
+            ? [pageSetup.customSize[0], pageSetup.customSize[1]]
             : (pageSetup?.size as PageSizePreset | undefined),
           margins: pageSetup?.margins ?? { top: 0, bottom: 0, left: 0, right: 0 },
           backgroundColor: color?.background,
