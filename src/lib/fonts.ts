@@ -45,10 +45,13 @@ export function needsUnicodeFont(text: string): boolean {
  * @param text - Text to check for emoji
  * @returns True if text contains emoji
  */
+// Cache the emoji regex instance globally to avoid recompiling on every call
+const cachedEmojiRegex = emojiRegexFactory();
+
 export function hasEmoji(text: string): boolean {
-  // Use emoji-regex package for accurate, up-to-date emoji detection
-  const emojiRegex = emojiRegexFactory();
-  return emojiRegex.test(text);
+  // Reset lastIndex because the cached regex is global (/g) and test() mutates lastIndex
+  cachedEmojiRegex.lastIndex = 0;
+  return cachedEmojiRegex.test(text);
 }
 
 /**
