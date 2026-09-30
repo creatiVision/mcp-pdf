@@ -137,19 +137,9 @@ export default function createTool() {
       const defaultResumeMargins = getResumeDefaultMargins(pageSize as PageSizePreset);
       const userMargins = styling?.margins;
 
-      // If user provides ANY margin, they must provide ALL (as per schema description, though Zod makes them optional for backward compat?
-      // No, let's strictly enforce it or merge. The improved UX goal says "Require all 4".
-      // But Zod schema above has .optional() on properties for backward compatibility?
-      // Wait, I didn't change the Zod definition to require them in the chunk above, I only changed description.
-      // I should fundamentally change schema to: top: z.number(), ... (required).
-
-      // Let's implement the logic:
+      // Merge specified user margins with defaults for any omitted sides
       let margins: Margins;
       if (userMargins) {
-        // If any is missing, fill with default? No, the goal is strictness.
-        // But schema says optional. I'll merge with defaults but report "effective".
-        // Actually, for better UX: "Partial updates use defaults for missing sides" is confusing.
-        // Let's stick to "Merge with defaults" but transparency in output.
         margins = {
           top: userMargins.top ?? defaultResumeMargins.top,
           bottom: userMargins.bottom ?? defaultResumeMargins.bottom,
