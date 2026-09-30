@@ -6,7 +6,7 @@
  */
 
 import type PDFKit from 'pdfkit';
-import { renderField } from '../formatting.ts';
+import { paragraphsFromContent, renderField } from '../formatting.ts';
 import type { CompanyHeaderElement, CredentialData, CredentialListElement, DividerElement, EntryData, EntryHeaderElement, FieldTemplates, GroupElement, HeaderElement, KeywordListElement, LanguageListElement, ReferenceListElement, SectionTitleElement, StructuredContentElement, TextElement } from '../ir/types.ts';
 import { measureMarkdownTextHeight, renderText } from '../pdf-helpers.ts';
 import { getResolvedStyle, type TypographyOptions } from '../types/typography.ts';
@@ -25,17 +25,7 @@ function ensureString(value: unknown): string {
   return String(value);
 }
 
-/**
- * Convert content to array of paragraphs.
- */
-function paragraphsFromContent(content: string | string[] | undefined): string[] {
-  if (!content) return [];
-  if (Array.isArray(content)) return content.filter(Boolean);
-  return content
-    .split(/\n\n+/)
-    .map((p) => p.trim())
-    .filter(Boolean);
-}
+
 
 // =============================================================================
 // Element Renderers

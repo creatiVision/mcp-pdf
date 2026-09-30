@@ -1,7 +1,32 @@
 import assert from 'assert';
-import { calculateTenure, DEFAULT_FIELD_TEMPLATES, formatDate, formatTenure, mergeFieldTemplates, registerFieldFilters, renderField } from '../../../src/lib/formatting.ts';
+import {
+  calculateTenure,
+  DEFAULT_FIELD_TEMPLATES,
+  formatDate,
+  formatTenure,
+  mergeFieldTemplates,
+  paragraphsFromContent,
+  registerFieldFilters,
+  renderField,
+} from '../../../src/lib/formatting.ts';
 
 describe('formatting', (): void => {
+  describe('paragraphsFromContent', () => {
+    it('returns empty array when content is undefined or empty', () => {
+      assert.deepStrictEqual(paragraphsFromContent(undefined), []);
+      assert.deepStrictEqual(paragraphsFromContent(''), []);
+    });
+
+    it('filters out empty values when content is an array', () => {
+      assert.deepStrictEqual(paragraphsFromContent(['Para 1', '', 'Para 2']), ['Para 1', 'Para 2']);
+    });
+
+    it('splits single string on double newlines and trims paragraphs', () => {
+      const input = 'Paragraph 1\n\n  Paragraph 2  \n\n\nParagraph 3';
+      assert.deepStrictEqual(paragraphsFromContent(input), ['Paragraph 1', 'Paragraph 2', 'Paragraph 3']);
+    });
+  });
+
   describe('formatTenure', (): void => {
     it('returns empty string for null or undefined start date', (): void => {
       assert.strictEqual(formatTenure(undefined, '2023-01'), '');
