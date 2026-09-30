@@ -134,8 +134,26 @@ export interface ResolvedTextStyle {
   fontSize: number;
   lineGap: number;
   paragraphMarginBottom: number;
-  itemMarginBottom: number;
+  bulletMarginBottom: number;
+  bulletGap: number;
   blockMarginBottom: number;
+  itemMarginBottom: number;
+}
+
+/**
+ * Get resolved text style values from typography.
+ */
+export function getResolvedStyle(typography: TypographyOptions): ResolvedTextStyle {
+  const { content } = typography;
+  return {
+    fontSize: content.fontSize,
+    lineGap: (content.lineHeight ?? 1.3) * content.fontSize - content.fontSize,
+    paragraphMarginBottom: content.paragraphMarginBottom,
+    bulletMarginBottom: content.bulletMarginBottom,
+    bulletGap: content.bulletGap,
+    blockMarginBottom: content.bulletGap + content.bulletMarginBottom,
+    itemMarginBottom: content.itemMarginBottom,
+  };
 }
 
 // =============================================================================

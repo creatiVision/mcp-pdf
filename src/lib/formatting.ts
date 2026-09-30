@@ -210,3 +210,15 @@ export function registerFieldFilters(): void {
     return formatTenure(start, end);
   });
 }
+
+/**
+ * Convert content to array of paragraphs.
+ */
+export function paragraphsFromContent(content: string | string[] | undefined): string[] {
+  if (!content) return [];
+  if (Array.isArray(content)) return content.filter(Boolean);
+  return content
+    .split(/\n\n+/)
+    .map((p) => p.trim())
+    .filter(Boolean);
+}

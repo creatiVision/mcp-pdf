@@ -179,8 +179,15 @@ export function parseImageDimensions(buffer: Buffer): ImageDimensions | null {
  */
 function getLocalImageDimensions(imagePath: string): ImageDimensions | null {
   try {
-    // Resolve relative paths
-    const resolvedPath = path.isAbsolute(imagePath) ? imagePath : path.resolve(process.cwd(), imagePath);
+    // Resolve relative paths and sanitize against path traversal
+    const workingDir = path.resolve(process.cwd());
+    const resolvedPath = path.resolve(workingDir, imagePath);
+
+    // Prevent directory traversal outside workingDir
+    const relativePath = path.relative(workingDir, resolvedPath);
+    if (relativePath.startsWith('..') || path.isAbsolute(relativePath)) {
+      return null;
+    }
 
     if (!fs.existsSync(resolvedPath)) {
       return null;
