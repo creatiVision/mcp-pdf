@@ -1,15 +1,5 @@
 import assert from 'assert';
-import {
-  calculateTenure,
-  DEFAULT_FIELD_TEMPLATES,
-  ensureString,
-  formatDate,
-  formatTenure,
-  mergeFieldTemplates,
-  paragraphsFromContent,
-  registerFieldFilters,
-  renderField,
-} from '../../../src/lib/formatting.ts';
+import { calculateTenure, DEFAULT_FIELD_TEMPLATES, ensureString, formatDate, formatTenure, mergeFieldTemplates, paragraphsFromContent, registerFieldFilters, renderField } from '../../../src/lib/formatting.ts';
 
 describe('formatting', (): void => {
   describe('ensureString', () => {

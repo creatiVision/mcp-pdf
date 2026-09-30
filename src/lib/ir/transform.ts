@@ -131,7 +131,6 @@ function inferEntryVariant(source: string): 'work' | 'education' {
   return 'work'; // Default for work, volunteer, projects, etc.
 }
 
-
 /**
  * Group entries by company name (for work entries).
  */

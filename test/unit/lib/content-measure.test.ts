@@ -1,17 +1,6 @@
 import assert from 'assert';
 import PDFDocument from 'pdfkit';
-import {
-  measureTextHeight,
-  measureTextWidth,
-  createWidthMeasurer,
-  measureImageHeight,
-  measureRectHeight,
-  measureCircleHeight,
-  measureLineHeight,
-  measureMoveDown,
-  measureGroupHeight,
-} from '../../../src/lib/content-measure.ts';
-import { DEFAULT_HEADING_FONT_SIZE, DEFAULT_TEXT_FONT_SIZE } from '../../../src/constants.ts';
+import { createWidthMeasurer, measureCircleHeight, measureGroupHeight, measureImageHeight, measureLineHeight, measureMoveDown, measureRectHeight, measureTextHeight, measureTextWidth } from '../../../src/lib/content-measure.ts';
 import type { LayoutContent } from '../../../src/lib/yoga-layout.ts';
 
 describe('content-measure utilities', () => {

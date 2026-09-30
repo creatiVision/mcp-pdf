@@ -32,7 +32,7 @@
 import assert from 'assert';
 import PDFDocument from 'pdfkit';
 import { deflateSync } from 'zlib';
-import { type ImageDimensions, getImageDimensions, getLocalImageDimensions, parseImageDimensions, resolveImageDimensions } from '../../../src/lib/image-dimensions.ts';
+import { getImageDimensions, getLocalImageDimensions, type ImageDimensions, parseImageDimensions, resolveImageDimensions } from '../../../src/lib/image-dimensions.ts';
 
 // ---------------------------------------------------------------------------
 // Deterministic PRNG (fixed seed - results are reproducible across runs)
@@ -682,21 +682,15 @@ describe('image-dimensions: async file resolution and overrides', () => {
 
 describe('image-dimensions: path traversal security checks', () => {
   it('blocks path traversal via relative paths outside working directory', async () => {
-    await assert.rejects(
-      async () => {
-        await resolveImageDimensions('../../../etc/passwd');
-      },
-      /Cannot determine image dimensions/
-    );
+    await assert.rejects(async () => {
+      await resolveImageDimensions('../../../etc/passwd');
+    }, /Cannot determine image dimensions/);
   });
 
   it('blocks path traversal via absolute paths outside working directory', async () => {
-    await assert.rejects(
-      async () => {
-        await resolveImageDimensions('/etc/passwd');
-      },
-      /Cannot determine image dimensions/
-    );
+    await assert.rejects(async () => {
+      await resolveImageDimensions('/etc/passwd');
+    }, /Cannot determine image dimensions/);
   });
 
   it('allows valid explicit dimensions even if path is outside working directory', async () => {
