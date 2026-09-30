@@ -210,3 +210,12 @@ export function registerFieldFilters(): void {
     return formatTenure(start, end);
   });
 }
+
+/**
+ * Ensure a value is a string.
+ */
+export function ensureString(value: unknown): string {
+  if (typeof value === 'string') return value;
+  if (value == null) return '';
+  return String(value);
+}

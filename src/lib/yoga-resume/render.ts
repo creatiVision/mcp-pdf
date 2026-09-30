@@ -6,7 +6,7 @@
  */
 
 import type PDFKit from 'pdfkit';
-import { renderField } from '../formatting.ts';
+import { ensureString, renderField } from '../formatting.ts';
 import type { CompanyHeaderElement, CredentialData, CredentialListElement, DividerElement, EntryData, EntryHeaderElement, FieldTemplates, GroupElement, HeaderElement, KeywordListElement, LanguageListElement, ReferenceListElement, SectionTitleElement, StructuredContentElement, TextElement } from '../ir/types.ts';
 import { measureMarkdownTextHeight, renderText } from '../pdf-helpers.ts';
 import type { TypographyOptions } from '../types/typography.ts';
@@ -15,15 +15,6 @@ import { type ComputedPosition, calculateEntryColumnWidths, type Page, type Page
 // =============================================================================
 // Helper Functions
 // =============================================================================
-
-/**
- * Ensure a value is a string.
- */
-function ensureString(value: unknown): string {
-  if (typeof value === 'string') return value;
-  if (value == null) return '';
-  return String(value);
-}
 
 /**
  * Get resolved text style values from typography.

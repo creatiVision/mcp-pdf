@@ -7,7 +7,7 @@
  */
 
 import type { ResumeSchema } from '../../../assets/resume.ts';
-import { mergeFieldTemplates, registerFieldFilters } from '../formatting.ts';
+import { ensureString, mergeFieldTemplates, registerFieldFilters } from '../formatting.ts';
 import type {
   ContactItem,
   CredentialData,
@@ -141,15 +141,6 @@ function paragraphsFromContent(content: string | string[] | undefined): string[]
     .split(/\n\n+/)
     .map((p) => p.trim())
     .filter(Boolean);
-}
-
-/**
- * Ensure a value is a string.
- */
-function ensureString(value: unknown): string {
-  if (typeof value === 'string') return value;
-  if (value == null) return '';
-  return String(value);
 }
 
 /**
