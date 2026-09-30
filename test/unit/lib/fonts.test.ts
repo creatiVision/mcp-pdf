@@ -679,3 +679,117 @@ Achievements:
     console.log('   Open these files to visually verify emoji rendering\n');
   });
 });
+
+describe('SSRF Protection in Font Downloading', (): void => {
+  describe('isPrivateIP', (): void => {
+    it('identifies loopback addresses as private', (): void => {
+      assert.strictEqual(fonts.isPrivateIP('127.0.0.1'), true);
+      assert.strictEqual(fonts.isPrivateIP('127.0.0.2'), true);
+      assert.strictEqual(fonts.isPrivateIP('127.255.255.255'), true);
+      assert.strictEqual(fonts.isPrivateIP('::1'), true);
+      assert.strictEqual(fonts.isPrivateIP('0:0:0:0:0:0:0:1'), true);
+    });
+
+    it('identifies RFC1918 private IPv4 addresses as private', (): void => {
+      assert.strictEqual(fonts.isPrivateIP('10.0.0.1'), true);
+      assert.strictEqual(fonts.isPrivateIP('10.255.255.255'), true);
+      assert.strictEqual(fonts.isPrivateIP('172.16.0.1'), true);
+      assert.strictEqual(fonts.isPrivateIP('172.31.255.255'), true);
+      assert.strictEqual(fonts.isPrivateIP('192.168.0.1'), true);
+      assert.strictEqual(fonts.isPrivateIP('192.168.255.255'), true);
+    });
+
+    it('identifies link-local and cloud metadata addresses as private', (): void => {
+      assert.strictEqual(fonts.isPrivateIP('169.254.169.254'), true);
+      assert.strictEqual(fonts.isPrivateIP('169.254.0.1'), true);
+      assert.strictEqual(fonts.isPrivateIP('fe80::1'), true);
+    });
+
+    it('identifies IPv6 unique local addresses as private', (): void => {
+      assert.strictEqual(fonts.isPrivateIP('fc00::1'), true);
+      assert.strictEqual(fonts.isPrivateIP('fd00::1'), true);
+    });
+
+    it('identifies IPv4-mapped IPv6 loopback and private addresses', (): void => {
+      assert.strictEqual(fonts.isPrivateIP('::ffff:127.0.0.1'), true);
+      assert.strictEqual(fonts.isPrivateIP('::ffff:10.0.0.1'), true);
+    });
+
+    it('identifies public IP addresses as non-private', (): void => {
+      assert.strictEqual(fonts.isPrivateIP('8.8.8.8'), false);
+      assert.strictEqual(fonts.isPrivateIP('1.1.1.1'), false);
+      assert.strictEqual(fonts.isPrivateIP('104.18.0.1'), false);
+      assert.strictEqual(fonts.isPrivateIP('172.32.0.1'), false);
+    });
+  });
+
+  describe('isPrivateHost', (): void => {
+    it('identifies local hostnames as private', (): void => {
+      assert.strictEqual(fonts.isPrivateHost('localhost'), true);
+      assert.strictEqual(fonts.isPrivateHost('LOCALHOST'), true);
+      assert.strictEqual(fonts.isPrivateHost('my.local'), true);
+      assert.strictEqual(fonts.isPrivateHost('service.internal'), true);
+      assert.strictEqual(fonts.isPrivateHost('router.lan'), true);
+      assert.strictEqual(fonts.isPrivateHost('app.localhost'), true);
+    });
+
+    it('identifies public domain names as non-private', (): void => {
+      assert.strictEqual(fonts.isPrivateHost('cdn.jsdelivr.net'), false);
+      assert.strictEqual(fonts.isPrivateHost('fonts.googleapis.com'), false);
+      assert.strictEqual(fonts.isPrivateHost('example.com'), false);
+    });
+  });
+
+  describe('validateFontUrl', (): void => {
+    it('rejects unsupported protocols', async (): Promise<void> => {
+      await assert.rejects(async () => await fonts.validateFontUrl('file:///etc/passwd'), /Only HTTP and HTTPS protocols are allowed/);
+
+      await assert.rejects(async () => await fonts.validateFontUrl('ftp://example.com/font.ttf'), /Only HTTP and HTTPS protocols are allowed/);
+    });
+
+    it('rejects URLs targeting local hosts and private IPs', async (): Promise<void> => {
+      await assert.rejects(async () => await fonts.validateFontUrl('http://localhost/font.ttf'), /Access to local\/internal host/);
+
+      await assert.rejects(async () => await fonts.validateFontUrl('http://127.0.0.1/font.ttf'), /Access to private\/restricted IP address/);
+
+      await assert.rejects(async () => await fonts.validateFontUrl('http://169.254.169.254/latest/meta-data'), /Access to private\/restricted IP address/);
+
+      await assert.rejects(async () => await fonts.validateFontUrl('http://10.0.0.1/font.ttf'), /Access to private\/restricted IP address/);
+    });
+
+    it('allows valid public HTTP/HTTPS URLs', async (): Promise<void> => {
+      const parsed = await fonts.validateFontUrl('https://cdn.jsdelivr.net/npm/@fontsource/noto-sans@5.0.0/files/noto-sans-latin-400-normal.woff2');
+      assert.strictEqual(parsed.hostname, 'cdn.jsdelivr.net');
+    });
+
+    it('enforces ALLOWED_FONT_DOMAINS when configured', async (): Promise<void> => {
+      const origEnv = process.env.ALLOWED_FONT_DOMAINS;
+      try {
+        process.env.ALLOWED_FONT_DOMAINS = 'jsdelivr.net, gstatic.com';
+
+        // Allowed host
+        const parsed = await fonts.validateFontUrl('https://cdn.jsdelivr.net/font.woff2');
+        assert.strictEqual(parsed.hostname, 'cdn.jsdelivr.net');
+
+        // Disallowed host
+        await assert.rejects(async () => await fonts.validateFontUrl('https://example.com/font.woff2'), /not in the allowed font domains list/);
+      } finally {
+        if (origEnv !== undefined) {
+          process.env.ALLOWED_FONT_DOMAINS = origEnv;
+        } else {
+          delete process.env.ALLOWED_FONT_DOMAINS;
+        }
+      }
+    });
+  });
+
+  describe('resolveFont SSRF protection', (): void => {
+    it('rejects font downloads from private or restricted URLs', async (): Promise<void> => {
+      await assert.rejects(async () => await fonts.resolveFont('http://127.0.0.1/font.ttf'), /Font download rejected/);
+
+      await assert.rejects(async () => await fonts.resolveFont('http://169.254.169.254/latest/meta-data'), /Font download rejected/);
+
+      await assert.rejects(async () => await fonts.resolveFont('http://localhost:8080/font.ttf'), /Font download rejected/);
+    });
+  });
+});

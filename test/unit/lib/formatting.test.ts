@@ -1,22 +1,210 @@
-import assert from 'node:assert';
-import { describe, it } from 'node:test';
-import { ensureString } from '../../../src/lib/formatting.ts';
+import assert from 'assert';
+import {
+  calculateTenure,
+  DEFAULT_FIELD_TEMPLATES,
+  ensureString,
+  formatDate,
+  formatTenure,
+  mergeFieldTemplates,
+  paragraphsFromContent,
+  registerFieldFilters,
+  renderField,
+} from '../../../src/lib/formatting.ts';
 
-describe('ensureString', () => {
-  it('returns string as-is', () => {
-    assert.strictEqual(ensureString('hello'), 'hello');
-    assert.strictEqual(ensureString(''), '');
+describe('formatting', (): void => {
+  describe('ensureString', () => {
+    it('returns string as-is', () => {
+      assert.strictEqual(ensureString('hello'), 'hello');
+      assert.strictEqual(ensureString(''), '');
+    });
+
+    it('returns empty string for null and undefined', () => {
+      assert.strictEqual(ensureString(null), '');
+      assert.strictEqual(ensureString(undefined), '');
+    });
+
+    it('converts non-string values to string', () => {
+      assert.strictEqual(ensureString(123), '123');
+      assert.strictEqual(ensureString(true), 'true');
+      assert.strictEqual(ensureString(false), 'false');
+      assert.strictEqual(ensureString({ toString: () => 'custom' }), 'custom');
+    });
   });
 
-  it('returns empty string for null and undefined', () => {
-    assert.strictEqual(ensureString(null), '');
-    assert.strictEqual(ensureString(undefined), '');
+  describe('paragraphsFromContent', () => {
+    it('returns empty array when content is undefined or empty', () => {
+      assert.deepStrictEqual(paragraphsFromContent(undefined), []);
+      assert.deepStrictEqual(paragraphsFromContent(''), []);
+    });
+
+    it('filters out empty values when content is an array', () => {
+      assert.deepStrictEqual(paragraphsFromContent(['Para 1', '', 'Para 2']), ['Para 1', 'Para 2']);
+    });
+
+    it('splits single string on double newlines and trims paragraphs', () => {
+      const input = 'Paragraph 1\n\n  Paragraph 2  \n\n\nParagraph 3';
+      assert.deepStrictEqual(paragraphsFromContent(input), ['Paragraph 1', 'Paragraph 2', 'Paragraph 3']);
+    });
   });
 
-  it('converts non-string values to string', () => {
-    assert.strictEqual(ensureString(123), '123');
-    assert.strictEqual(ensureString(true), 'true');
-    assert.strictEqual(ensureString(false), 'false');
-    assert.strictEqual(ensureString({ toString: () => 'custom' }), 'custom');
+  describe('formatTenure', (): void => {
+    it('returns empty string for null or undefined start date', (): void => {
+      assert.strictEqual(formatTenure(undefined, '2023-01'), '');
+      assert.strictEqual(formatTenure(null, '2023-01'), '');
+      assert.strictEqual(formatTenure('', '2023-01'), '');
+    });
+
+    it('returns empty string when start date cannot be parsed', (): void => {
+      assert.strictEqual(formatTenure('invalid-date', '2023-01'), '');
+    });
+
+    it('returns empty string when end date cannot be parsed', (): void => {
+      assert.strictEqual(formatTenure('2022-01', 'invalid-date'), '');
+    });
+
+    it('returns empty string when start date equals end date (0 yrs 0 mo)', (): void => {
+      assert.strictEqual(formatTenure('2023-01', '2023-01'), '');
+      assert.strictEqual(formatTenure('2023-01-15', '2023-01-20'), '');
+    });
+
+    it('formats tenure under 1 year (months only)', (): void => {
+      assert.strictEqual(formatTenure('2023-01', '2023-06'), '5 mo');
+      assert.strictEqual(formatTenure('2023-01', '2023-02'), '1 mo');
+      assert.strictEqual(formatTenure('2023-01', '2023-12'), '11 mo');
+    });
+
+    it('formats tenure of exactly 1 year', (): void => {
+      assert.strictEqual(formatTenure('2022-01', '2023-01'), '1 yr');
+    });
+
+    it('formats tenure of multiple years with 0 months', (): void => {
+      assert.strictEqual(formatTenure('2020-01', '2022-01'), '2 yrs');
+      assert.strictEqual(formatTenure('2018-05', '2023-05'), '5 yrs');
+    });
+
+    it('formats tenure with 1 year and months', (): void => {
+      assert.strictEqual(formatTenure('2022-01', '2023-04'), '1 yr 3 mo');
+      assert.strictEqual(formatTenure('2022-01', '2023-02'), '1 yr 1 mo');
+    });
+
+    it('formats tenure with multiple years and months', (): void => {
+      assert.strictEqual(formatTenure('2020-01', '2023-07'), '3 yrs 6 mo');
+      assert.strictEqual(formatTenure('2019-03', '2022-04'), '3 yrs 1 mo');
+    });
+
+    it('defaults end date to current date when end date is omitted or null/undefined', (): void => {
+      const now = new Date();
+      const year = now.getFullYear();
+      const month = now.getMonth() + 1;
+
+      // Create a start date 2 years prior to current year/month
+      const startYear = year - 2;
+      const startMonthStr = String(month).padStart(2, '0');
+      const startDateStr = `${startYear}-${startMonthStr}`;
+
+      assert.strictEqual(formatTenure(startDateStr, undefined), '2 yrs');
+      assert.strictEqual(formatTenure(startDateStr, null), '2 yrs');
+    });
+
+    it('returns empty string when end date is earlier than start date', (): void => {
+      assert.strictEqual(formatTenure('2023-05', '2021-01'), '');
+    });
+
+    it('handles YYYY date format', (): void => {
+      assert.strictEqual(formatTenure('2020', '2022'), '2 yrs');
+    });
+
+    it('handles YYYY-MM-DD date format', (): void => {
+      assert.strictEqual(formatTenure('2020-01-15', '2022-01-10'), '2 yrs');
+    });
+  });
+
+  describe('calculateTenure', (): void => {
+    it('returns null for empty start date', (): void => {
+      assert.strictEqual(calculateTenure(undefined, '2023-01'), null);
+      assert.strictEqual(calculateTenure(null, '2023-01'), null);
+    });
+
+    it('returns null for invalid start date or end date', (): void => {
+      assert.strictEqual(calculateTenure('invalid', '2023-01'), null);
+      assert.strictEqual(calculateTenure('2023-01', 'invalid'), null);
+    });
+
+    it('calculates totalMonths, years, and months correctly', (): void => {
+      const res = calculateTenure('2020-01', '2022-07');
+      assert.deepStrictEqual(res, { years: 2, months: 6, totalMonths: 30 });
+    });
+  });
+
+  describe('formatDate', (): void => {
+    it('returns empty string for null or undefined date', (): void => {
+      assert.strictEqual(formatDate(undefined, 'YYYY-MM-DD'), '');
+      assert.strictEqual(formatDate(null, 'YYYY-MM-DD'), '');
+    });
+
+    it('returns original string if format cannot parse date', (): void => {
+      assert.strictEqual(formatDate('not-a-date', 'YYYY-MM-DD'), 'not-a-date');
+    });
+
+    it('formats full dates YYYY-MM-DD', (): void => {
+      assert.strictEqual(formatDate('2023-05-15', 'MMMM D, YYYY'), 'May 15, 2023');
+      assert.strictEqual(formatDate('2023-05-05', 'MMM DD, YY'), 'May 05, 23');
+    });
+
+    it('formats partial dates YYYY-MM', (): void => {
+      assert.strictEqual(formatDate('2023-05', 'MMM YYYY'), 'May 2023');
+      assert.strictEqual(formatDate('2023-05', 'MMMM YYYY'), 'May 2023');
+      assert.strictEqual(formatDate('2023-05', 'M/YY'), '5/23');
+    });
+
+    it('formats year-only dates YYYY', (): void => {
+      assert.strictEqual(formatDate('2023', 'YYYY'), '2023');
+      assert.strictEqual(formatDate('2023', 'MMM YYYY'), 'Jan 2023');
+    });
+  });
+
+  describe('mergeFieldTemplates', (): void => {
+    it('returns default templates when user templates are omitted', (): void => {
+      const merged = mergeFieldTemplates();
+      assert.deepStrictEqual(merged, DEFAULT_FIELD_TEMPLATES);
+    });
+
+    it('overrides default templates with provided user templates', (): void => {
+      const merged = mergeFieldTemplates({
+        location: '{{ city }}',
+      });
+      assert.strictEqual(merged.location, '{{ city }}');
+      assert.strictEqual(merged.degree, DEFAULT_FIELD_TEMPLATES.degree);
+    });
+  });
+
+  describe('renderField and Liquid filters', (): void => {
+    before((): void => {
+      registerFieldFilters();
+    });
+
+    it('allows calling registerFieldFilters multiple times safely', (): void => {
+      assert.doesNotThrow(() => registerFieldFilters());
+    });
+
+    it('renders basic liquid field templates', (): void => {
+      const result = renderField(DEFAULT_FIELD_TEMPLATES.location, { city: 'San Francisco', region: 'CA' });
+      assert.strictEqual(result, 'San Francisco, CA');
+    });
+
+    it('uses date filter in template', (): void => {
+      const result = renderField("{{ start | date: 'MMM YYYY' }}", { start: '2020-01-15' });
+      assert.strictEqual(result, 'Jan 2020');
+    });
+
+    it('uses default filter in template', (): void => {
+      const result = renderField("{{ end | default: 'Present' }}", { end: null });
+      assert.strictEqual(result, 'Present');
+    });
+
+    it('uses tenure filter in template', (): void => {
+      const result = renderField('{{ start | tenure: end }}', { start: '2020-01', end: '2022-01' });
+      assert.strictEqual(result, '2 yrs');
+    });
   });
 });

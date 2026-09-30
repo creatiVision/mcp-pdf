@@ -77,11 +77,14 @@ export function paginateLayout(nodes: ResumeLayoutNode[], config: PageConfig = D
   const contentHeight = getContentHeight(config);
   const pageBottom = config.margins.top + contentHeight;
 
+  // Flatten non-atomic groups to ensure children are paginated individually
+  const flattenedNodes = flattenToPaginatableUnits(nodes, config);
+
   const pages: Page[] = [{ number: 0, nodes: [] }];
   let currentPage = 0;
   let pageStartY = 0; // Y offset for current page
 
-  for (const node of nodes) {
+  for (const node of flattenedNodes) {
     const nodeTop = node.y;
     const _nodeBottom = node.y + node.height;
     const nodeHeight = node.height;
@@ -146,17 +149,19 @@ export function calculateNewPageOffset(nodeY: number, config: PageConfig): numbe
  * @param nodes - Layout nodes to flatten
  * @returns Flattened array of paginatable nodes
  */
-function flattenToPaginatableUnits(nodes: ResumeLayoutNode[]): ResumeLayoutNode[] {
+function flattenToPaginatableUnits(nodes: ResumeLayoutNode[], config: PageConfig = DEFAULT_PAGE_CONFIG): ResumeLayoutNode[] {
   const result: ResumeLayoutNode[] = [];
+  const contentHeight = getContentHeight(config);
 
   for (const node of nodes) {
     const isGroup = node.element.type === 'group';
     const isAtomic = isAtomicGroup(node.element);
+    const exceedsPageHeight = node.height > contentHeight;
 
-    if (isGroup && !isAtomic && node.children && node.children.length > 0) {
-      // Non-atomic group: recursively flatten children
+    if (isGroup && (!isAtomic || exceedsPageHeight) && node.children && node.children.length > 0) {
+      // Non-atomic group or oversized atomic group: recursively flatten children
       // The children already have their absolute Y positions from Yoga
-      result.push(...flattenToPaginatableUnits(node.children));
+      result.push(...flattenToPaginatableUnits(node.children, config));
     } else {
       // Atomic group or leaf node: keep as single unit
       result.push(node);
@@ -181,7 +186,7 @@ export function paginateLayoutWithAtomicGroups(nodes: ResumeLayoutNode[], config
 
   // Flatten the node tree so we can paginate each unit individually
   // Non-atomic groups are expanded to their children
-  const flattenedNodes = flattenToPaginatableUnits(nodes);
+  const flattenedNodes = flattenToPaginatableUnits(nodes, config);
 
   const pages: Page[] = [{ number: 0, nodes: [] }];
   let currentPage = 0;

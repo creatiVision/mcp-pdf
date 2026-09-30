@@ -6,41 +6,18 @@
  */
 
 import type PDFKit from 'pdfkit';
-import { ensureString, renderField } from '../formatting.ts';
+import { ensureString, paragraphsFromContent, renderField } from '../formatting.ts';
 import type { CompanyHeaderElement, CredentialData, CredentialListElement, DividerElement, EntryData, EntryHeaderElement, FieldTemplates, GroupElement, HeaderElement, KeywordListElement, LanguageListElement, ReferenceListElement, SectionTitleElement, StructuredContentElement, TextElement } from '../ir/types.ts';
 import { measureMarkdownTextHeight, renderText } from '../pdf-helpers.ts';
-import type { TypographyOptions } from '../types/typography.ts';
+import { getResolvedStyle, type TypographyOptions } from '../types/typography.ts';
 import { type ComputedPosition, calculateEntryColumnWidths, type Page, type PageNode, type RenderContext } from './types.ts';
 
 // =============================================================================
 // Helper Functions
 // =============================================================================
 
-/**
- * Get resolved text style values from typography.
- */
-function getResolvedStyle(typography: TypographyOptions) {
-  const { content } = typography;
-  return {
-    fontSize: content.fontSize,
-    lineGap: (content.lineHeight ?? 1.3) * content.fontSize - content.fontSize,
-    paragraphMarginBottom: content.paragraphMarginBottom,
-    itemMarginBottom: content.itemMarginBottom,
-    blockMarginBottom: content.bulletGap + content.bulletMarginBottom,
-  };
-}
 
-/**
- * Convert content to array of paragraphs.
- */
-function paragraphsFromContent(content: string | string[] | undefined): string[] {
-  if (!content) return [];
-  if (Array.isArray(content)) return content.filter(Boolean);
-  return content
-    .split(/\n\n+/)
-    .map((p) => p.trim())
-    .filter(Boolean);
-}
+
 
 // =============================================================================
 // Element Renderers
