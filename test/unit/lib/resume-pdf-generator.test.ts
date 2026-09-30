@@ -1,7 +1,7 @@
 import type { Logger } from '@mcp-z/mcp-pdf';
 import assert from 'assert';
 import { generateResumePDFBuffer, type RenderOptions, type ResumeSchema } from '../../../src/lib/resume-pdf-generator.ts';
-import type { TypographyOptions } from '../../../src/lib/types/typography.ts';
+import { DEFAULT_TYPOGRAPHY, getResolvedStyle, type TypographyOptions } from '../../../src/lib/types/typography.ts';
 
 // Silent logger for tests
 const silentLogger: Logger = {
@@ -486,5 +486,32 @@ describe('Emoji Integration in PDFs', () => {
     assert.ok(pdfBuffer.length > 0, 'PDF should have content');
     console.log(`    📄 Created: (${pdfBuffer.length} bytes)`);
     console.log('    ℹ️  Standard symbols should render, true emoji should be handled specially');
+  });
+});
+
+describe('getResolvedStyle', () => {
+  it('correctly calculates style properties from DEFAULT_TYPOGRAPHY', () => {
+    const resolved = getResolvedStyle(DEFAULT_TYPOGRAPHY);
+    assert.strictEqual(resolved.fontSize, DEFAULT_TYPOGRAPHY.content.fontSize);
+    assert.strictEqual(resolved.lineGap, DEFAULT_TYPOGRAPHY.content.lineHeight * DEFAULT_TYPOGRAPHY.content.fontSize - DEFAULT_TYPOGRAPHY.content.fontSize);
+    assert.strictEqual(resolved.paragraphMarginBottom, DEFAULT_TYPOGRAPHY.content.paragraphMarginBottom);
+    assert.strictEqual(resolved.bulletMarginBottom, DEFAULT_TYPOGRAPHY.content.bulletMarginBottom);
+    assert.strictEqual(resolved.bulletGap, DEFAULT_TYPOGRAPHY.content.bulletGap);
+    assert.strictEqual(resolved.blockMarginBottom, DEFAULT_TYPOGRAPHY.content.bulletGap + DEFAULT_TYPOGRAPHY.content.bulletMarginBottom);
+    assert.strictEqual(resolved.itemMarginBottom, DEFAULT_TYPOGRAPHY.content.itemMarginBottom);
+  });
+
+  it('correctly calculates lineGap with custom line height or default fallback', () => {
+    const customTypography: TypographyOptions = {
+      ...DEFAULT_TYPOGRAPHY,
+      content: {
+        ...DEFAULT_TYPOGRAPHY.content,
+        fontSize: 12,
+        lineHeight: 1.5,
+      },
+    };
+    const resolved = getResolvedStyle(customTypography);
+    assert.strictEqual(resolved.fontSize, 12);
+    assert.strictEqual(resolved.lineGap, 1.5 * 12 - 12);
   });
 });
