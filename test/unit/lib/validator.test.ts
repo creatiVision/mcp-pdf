@@ -1,5 +1,5 @@
 import assert from 'assert';
-import { validateResume } from '../../../src/lib/validator.ts';
+import { validateResume, validateResumeAsync } from '../../../src/lib/validator.ts';
 
 describe('validateResume', () => {
   describe('Valid Resumes', () => {
@@ -199,6 +199,37 @@ describe('validateResume', () => {
       const result = validateResume(['not', 'a', 'resume', 'object']);
       assert.strictEqual(result.valid, false);
       assert.ok(Array.isArray(result.errors));
+    });
+  });
+
+  describe('validateResumeAsync', () => {
+    it('validateResumeAsync validates valid resume correctly', async () => {
+      const resume = {
+        basics: {
+          name: 'John Doe',
+          email: 'john@example.com',
+        },
+        work: [
+          {
+            name: 'Company',
+            position: 'Developer',
+          },
+        ],
+      };
+      const result = await validateResumeAsync(resume);
+      assert.strictEqual(result.valid, true);
+      assert.strictEqual(result.errors, undefined);
+    });
+
+    it('validateResumeAsync validates invalid resume correctly', async () => {
+      const resume = {
+        basics: {
+          email: 'not-an-email',
+        },
+      };
+      const result = await validateResumeAsync(resume);
+      assert.strictEqual(result.valid, false);
+      assert.ok(result.errors && result.errors.length > 0);
     });
   });
 });

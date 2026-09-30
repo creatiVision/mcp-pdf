@@ -16,7 +16,7 @@ import { type CallToolResult, getFileUri, ProtocolError, ProtocolErrorCode, type
 import { z } from 'zod';
 import type { Margins, PageSizePreset } from '../../constants.ts';
 import { generateResumePDFBuffer, type RenderOptions, type TypographyOptions } from '../../lib/resume-pdf-generator.ts';
-import { validateResume } from '../../lib/validator.ts';
+import { validateResumeAsync } from '../../lib/validator.ts';
 import { resumeLayoutSchema, sectionsConfigSchema, stylingSchema } from '../../schemas/resume.ts';
 import type { StorageExtra } from '../../types.ts';
 
@@ -87,7 +87,7 @@ export default function createTool() {
 
     try {
       // Validate resume against JSON Schema
-      const validation = validateResume(resume);
+      const validation = await validateResumeAsync(resume);
       if (!validation.valid) {
         throw new ProtocolError(ProtocolErrorCode.InvalidParams, `Resume validation failed: ${validation.errors?.join('; ') || 'Unknown error'}`);
       }
