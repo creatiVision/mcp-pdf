@@ -208,7 +208,7 @@ export default function createTool() {
           }
 
           case 'image': {
-            const dimensions = resolveImageDimensions(
+            const dimensions = await resolveImageDimensions(
               item.imagePath,
               item.width ?? contentWidth, // Default to content width
               item.height

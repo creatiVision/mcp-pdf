@@ -32,7 +32,7 @@
 import assert from 'assert';
 import PDFDocument from 'pdfkit';
 import { deflateSync } from 'zlib';
-import { type ImageDimensions, parseImageDimensions, resolveImageDimensions } from '../../../src/lib/image-dimensions.ts';
+import { type ImageDimensions, getImageDimensions, getLocalImageDimensions, parseImageDimensions, resolveImageDimensions } from '../../../src/lib/image-dimensions.ts';
 
 // ---------------------------------------------------------------------------
 // Deterministic PRNG (fixed seed - results are reproducible across runs)
@@ -614,21 +614,93 @@ describe('image-dimensions: fuzz (no throw, no hang, valid values)', function ()
   });
 });
 
+// ---------------------------------------------------------------------------
+// PART 4 - Async image dimensions resolution and file utilities
+// ---------------------------------------------------------------------------
+
+describe('image-dimensions: async file resolution and overrides', () => {
+  it('getLocalImageDimensions correctly reads intrinsic dimensions asynchronously', async () => {
+    const dims = await getLocalImageDimensions('./resources/logo.png');
+    assert.ok(dims);
+    assert.ok(dims.width > 0);
+    assert.ok(dims.height > 0);
+  });
+
+  it('getLocalImageDimensions returns null for non-existent file', async () => {
+    const dims = await getLocalImageDimensions('./non-existent-image-path.png');
+    assert.strictEqual(dims, null);
+  });
+
+  it('getImageDimensions returns null for network URLs', async () => {
+    const dims = await getImageDimensions('https://example.com/logo.png');
+    assert.strictEqual(dims, null);
+  });
+
+  it('resolveImageDimensions resolves explicit width and height directly', async () => {
+    const dims = await resolveImageDimensions('./resources/logo.png', 100, 200);
+    assert.deepStrictEqual(dims, { width: 100, height: 200 });
+  });
+
+  it('resolveImageDimensions calculates height from aspect ratio when width provided', async () => {
+    const intrinsic = await getLocalImageDimensions('./resources/logo.png');
+    assert.ok(intrinsic);
+    const resolved = await resolveImageDimensions('./resources/logo.png', 100);
+    assert.strictEqual(resolved.width, 100);
+    assert.strictEqual(resolved.height, 100 * (intrinsic.height / intrinsic.width));
+  });
+
+  it('resolveImageDimensions calculates width from aspect ratio when height provided', async () => {
+    const intrinsic = await getLocalImageDimensions('./resources/logo.png');
+    assert.ok(intrinsic);
+    const resolved = await resolveImageDimensions('./resources/logo.png', undefined, 200);
+    assert.strictEqual(resolved.height, 200);
+    assert.strictEqual(resolved.width, 200 * (intrinsic.width / intrinsic.height));
+  });
+
+  it('resolveImageDimensions throws error for network image without explicit dimensions', async () => {
+    await assert.rejects(
+      async () => {
+        await resolveImageDimensions('https://example.com/image.png');
+      },
+      {
+        message: 'Image dimensions required for network images. Please provide explicit width and height for: https://example.com/image.png',
+      }
+    );
+  });
+
+  it('resolveImageDimensions throws error for non-existent file', async () => {
+    await assert.rejects(
+      async () => {
+        await resolveImageDimensions('./non-existent-image.png');
+      },
+      {
+        message: 'Cannot determine image dimensions for: ./non-existent-image.png. File may not exist or format is unsupported. Please provide explicit width and height.',
+      }
+    );
+  });
+});
+
 describe('image-dimensions: path traversal security checks', () => {
-  it('blocks path traversal via relative paths outside working directory', () => {
-    assert.throws(() => {
-      resolveImageDimensions('../../../etc/passwd');
-    }, /Cannot determine image dimensions/);
+  it('blocks path traversal via relative paths outside working directory', async () => {
+    await assert.rejects(
+      async () => {
+        await resolveImageDimensions('../../../etc/passwd');
+      },
+      /Cannot determine image dimensions/
+    );
   });
 
-  it('blocks path traversal via absolute paths outside working directory', () => {
-    assert.throws(() => {
-      resolveImageDimensions('/etc/passwd');
-    }, /Cannot determine image dimensions/);
+  it('blocks path traversal via absolute paths outside working directory', async () => {
+    await assert.rejects(
+      async () => {
+        await resolveImageDimensions('/etc/passwd');
+      },
+      /Cannot determine image dimensions/
+    );
   });
 
-  it('allows valid explicit dimensions even if path is outside working directory', () => {
-    const dims = resolveImageDimensions('../../../etc/passwd', 100, 200);
+  it('allows valid explicit dimensions even if path is outside working directory', async () => {
+    const dims = await resolveImageDimensions('../../../etc/passwd', 100, 200);
     assert.deepStrictEqual(dims, { width: 100, height: 200 });
   });
 });
