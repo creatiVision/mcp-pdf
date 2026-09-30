@@ -136,7 +136,7 @@ export default function createTool() {
       };
 
       // Height measurer for Yoga layout
-      const measureHeight = (item: LayoutContent, availableWidth: number): number => {
+      const measureHeight = async (item: LayoutContent, availableWidth: number): Promise<number> => {
         if (item.type === 'text' || item.type === 'heading') {
           if (!item.text) return 0;
           const fontSize = item.type === 'heading' ? ((item.fontSize as number) ?? DEFAULT_HEADING_FONT_SIZE) : ((item.fontSize as number) ?? DEFAULT_TEXT_FONT_SIZE);
@@ -154,7 +154,7 @@ export default function createTool() {
           return height;
         }
         if (item.type === 'image') {
-          const dimensions = resolveImageDimensions(item.imagePath as string, item.width as number | undefined, item.height as number | undefined);
+          const dimensions = await resolveImageDimensions(item.imagePath as string, item.width as number | undefined, item.height as number | undefined);
           return dimensions.height;
         }
         if (item.type === 'rect') {
@@ -170,7 +170,7 @@ export default function createTool() {
       };
 
       // Render a base content item at computed position
-      function renderBaseItem(item: BaseContentItem, computedX?: number, computedY?: number, computedWidth?: number) {
+      async function renderBaseItem(item: BaseContentItem, computedX?: number, computedY?: number, computedWidth?: number) {
         switch (item.type) {
           case 'text': {
             const fontSize = item.fontSize ?? DEFAULT_TEXT_FONT_SIZE;
@@ -212,7 +212,7 @@ export default function createTool() {
             break;
           }
           case 'image': {
-            const dimensions = resolveImageDimensions(item.imagePath, item.width as number | undefined, item.height as number | undefined);
+            const dimensions = await resolveImageDimensions(item.imagePath, item.width as number | undefined, item.height as number | undefined);
             const opts = { width: dimensions.width, height: dimensions.height };
 
             const imgX = computedX ?? item.left;
@@ -285,7 +285,7 @@ export default function createTool() {
       }
 
       // Render a layout node tree
-      function renderLayoutNode(node: LayoutNode) {
+      async function renderLayoutNode(node: LayoutNode) {
         const item = node.content as ContentItem;
 
         if (item.type === 'group') {
@@ -294,11 +294,11 @@ export default function createTool() {
 
           if (node.children) {
             for (const childNode of node.children) {
-              renderLayoutNode(childNode);
+              await renderLayoutNode(childNode);
             }
           }
         } else {
-          renderBaseItem(item as BaseContentItem, node.x, node.y, node.width);
+          await renderBaseItem(item as BaseContentItem, node.x, node.y, node.width);
         }
       }
 
@@ -380,7 +380,7 @@ export default function createTool() {
 
         // Render items for this page
         for (const node of layoutNodes) {
-          renderLayoutNode(node);
+          await renderLayoutNode(node);
         }
       }
 
