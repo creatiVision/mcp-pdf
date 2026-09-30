@@ -9,7 +9,7 @@ import type PDFKit from 'pdfkit';
 import { renderField } from '../formatting.ts';
 import type { CompanyHeaderElement, CredentialData, CredentialListElement, DividerElement, EntryData, EntryHeaderElement, FieldTemplates, GroupElement, HeaderElement, KeywordListElement, LanguageListElement, ReferenceListElement, SectionTitleElement, StructuredContentElement, TextElement } from '../ir/types.ts';
 import { measureMarkdownTextHeight, renderText } from '../pdf-helpers.ts';
-import type { TypographyOptions } from '../types/typography.ts';
+import { getResolvedStyle, type TypographyOptions } from '../types/typography.ts';
 import { type ComputedPosition, calculateEntryColumnWidths, type Page, type PageNode, type RenderContext } from './types.ts';
 
 // =============================================================================
@@ -23,20 +23,6 @@ function ensureString(value: unknown): string {
   if (typeof value === 'string') return value;
   if (value == null) return '';
   return String(value);
-}
-
-/**
- * Get resolved text style values from typography.
- */
-function getResolvedStyle(typography: TypographyOptions) {
-  const { content } = typography;
-  return {
-    fontSize: content.fontSize,
-    lineGap: (content.lineHeight ?? 1.3) * content.fontSize - content.fontSize,
-    paragraphMarginBottom: content.paragraphMarginBottom,
-    itemMarginBottom: content.itemMarginBottom,
-    blockMarginBottom: content.bulletGap + content.bulletMarginBottom,
-  };
 }
 
 /**
