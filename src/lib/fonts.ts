@@ -1,7 +1,9 @@
+import { lookup } from 'dns/promises';
 import emojiRegexFactory from 'emoji-regex';
 import { type Font, openSync as fontkitOpenSync } from 'fontkit';
 import { existsSync } from 'fs';
 import { mkdir, writeFile } from 'fs/promises';
+import { isIP } from 'net';
 import { tmpdir } from 'os';
 import { join } from 'path';
 import type PDFKit from 'pdfkit';
@@ -27,7 +29,7 @@ export function isPDFStandardFont(font: string): font is PDFStandardFont {
  */
 export function needsUnicodeFont(text: string): boolean {
   // Anything beyond ASCII + Latin-1 (0x00-0xFF) needs Unicode font
-  return /[\u0100-\uFFFF]/.test(text);
+  return /[Ā-￿]/.test(text);
 }
 
 /**
@@ -49,6 +51,178 @@ export function hasEmoji(text: string): boolean {
   // Use emoji-regex package for accurate, up-to-date emoji detection
   const emojiRegex = emojiRegexFactory();
   return emojiRegex.test(text);
+}
+
+/**
+ * Check if an IP address is a private, loopback, or internal address
+ */
+export function isPrivateIP(ip: string): boolean {
+  // Handle IPv4-mapped IPv6 addresses (e.g. ::ffff:127.0.0.1)
+  if (ip.toLowerCase().startsWith('::ffff:')) {
+    const ipv4Part = ip.slice(7);
+    if (isIP(ipv4Part) === 4) {
+      return isPrivateIP(ipv4Part);
+    }
+  }
+
+  const ipType = isIP(ip);
+  if (ipType === 4) {
+    const parts = ip.split('.').map((p) => parseInt(p, 10));
+    if (parts.length !== 4 || parts.some(Number.isNaN)) {
+      return true; // invalid IPv4, treat as restricted
+    }
+
+    const [a, b] = parts;
+
+    // 0.0.0.0/8 (Current network)
+    if (a === 0) return true;
+    // 10.0.0.0/8 (Private network)
+    if (a === 10) return true;
+    // 100.64.0.0/10 (Shared address space / CGNAT)
+    if (a === 100 && b >= 64 && b <= 127) return true;
+    // 127.0.0.0/8 (Loopback)
+    if (a === 127) return true;
+    // 169.254.0.0/16 (Link-local, cloud metadata 169.254.169.254)
+    if (a === 169 && b === 254) return true;
+    // 172.16.0.0/12 (Private network)
+    if (a === 172 && b >= 16 && b <= 31) return true;
+    // 192.0.2.0/24 (TEST-NET-1)
+    if (a === 192 && b === 0 && parts[2] === 2) return true;
+    // 192.168.0.0/16 (Private network)
+    if (a === 192 && b === 168) return true;
+    // 198.51.100.0/24 (TEST-NET-2)
+    if (a === 198 && b === 51 && parts[2] === 100) return true;
+    // 203.0.113.0/24 (TEST-NET-3)
+    if (a === 203 && b === 0 && parts[2] === 113) return true;
+    // 224.0.0.0/4 (Multicast)
+    if (a >= 224 && a <= 239) return true;
+    // 240.0.0.0/4 (Reserved)
+    if (a >= 240) return true;
+
+    return false;
+  }
+
+  if (ipType === 6) {
+    const normalized = ip.toLowerCase();
+    // Loopback ::1 or 0:0:0:0:0:0:0:1 or ::
+    if (normalized === '::1' || normalized === '0:0:0:0:0:0:0:1' || normalized === '::') return true;
+    // Link-local fe80::/10
+    if (normalized.startsWith('fe8') || normalized.startsWith('fe9') || normalized.startsWith('fea') || normalized.startsWith('feb')) return true;
+    // Unique local fc00::/7
+    if (normalized.startsWith('fc') || normalized.startsWith('fd')) return true;
+
+    return false;
+  }
+
+  return true; // invalid/unknown IP type -> treat as restricted
+}
+
+/**
+ * Check if a hostname is a local/internal hostname
+ */
+export function isPrivateHost(hostname: string): boolean {
+  const host = hostname.toLowerCase();
+  if (host === 'localhost' || host.endsWith('.local') || host.endsWith('.internal') || host.endsWith('.lan') || host.endsWith('.localhost')) {
+    return true;
+  }
+  return false;
+}
+
+/**
+ * Validate font URL against SSRF vulnerabilities:
+ * - Only allow HTTP/HTTPS
+ * - Disallow local/private hostnames and IP addresses
+ * - Perform DNS lookup to verify resolved IP addresses
+ * - Enforce optional ALLOWED_FONT_DOMAINS allowlist
+ */
+export async function validateFontUrl(urlStr: string): Promise<URL> {
+  let parsedUrl: URL;
+  try {
+    parsedUrl = new URL(urlStr);
+  } catch {
+    throw new Error(`Invalid URL: ${urlStr}`);
+  }
+
+  if (parsedUrl.protocol !== 'http:' && parsedUrl.protocol !== 'https:') {
+    throw new Error(`Font download rejected: Only HTTP and HTTPS protocols are allowed (got ${parsedUrl.protocol})`);
+  }
+
+  const hostname = parsedUrl.hostname;
+  if (!hostname) {
+    throw new Error(`Font download rejected: Missing hostname in URL ${urlStr}`);
+  }
+
+  if (isPrivateHost(hostname)) {
+    throw new Error(`Font download rejected: Access to local/internal host '${hostname}' is disallowed`);
+  }
+
+  if (isIP(hostname)) {
+    if (isPrivateIP(hostname)) {
+      throw new Error(`Font download rejected: Access to private/restricted IP address '${hostname}' is disallowed`);
+    }
+  } else {
+    try {
+      const addresses = await lookup(hostname, { all: true });
+      if (!addresses || addresses.length === 0) {
+        throw new Error(`Font download rejected: Could not resolve hostname '${hostname}'`);
+      }
+
+      for (const addr of addresses) {
+        if (isPrivateIP(addr.address)) {
+          throw new Error(`Font download rejected: Hostname '${hostname}' resolved to private/restricted IP address '${addr.address}'`);
+        }
+      }
+    } catch (err: unknown) {
+      if (err instanceof Error && err.message.startsWith('Font download rejected:')) {
+        throw err;
+      }
+      const msg = err instanceof Error ? err.message : String(err);
+      throw new Error(`Font download rejected: DNS lookup failed for '${hostname}': ${msg}`);
+    }
+  }
+
+  const allowedDomainsEnv = process.env.ALLOWED_FONT_DOMAINS;
+  if (allowedDomainsEnv) {
+    const allowedList = allowedDomainsEnv
+      .split(',')
+      .map((d) => d.trim().toLowerCase())
+      .filter(Boolean);
+    const lowerHost = hostname.toLowerCase();
+    const isAllowed = allowedList.some((domain) => lowerHost === domain || lowerHost.endsWith(`.${domain}`));
+    if (!isAllowed) {
+      throw new Error(`Font download rejected: Hostname '${hostname}' is not in the allowed font domains list`);
+    }
+  }
+
+  return parsedUrl;
+}
+
+/**
+ * Safely fetch a resource with SSRF protection on redirects
+ */
+async function fetchSafe(urlStr: string, maxRedirects = 5): Promise<Response> {
+  let currentUrl = urlStr;
+  let redirectCount = 0;
+
+  while (redirectCount <= maxRedirects) {
+    const validatedUrl = await validateFontUrl(currentUrl);
+
+    const response = await fetch(validatedUrl.toString(), { redirect: 'manual' });
+
+    if (response.status >= 300 && response.status < 400) {
+      const location = response.headers.get('location');
+      if (!location) {
+        throw new Error(`Font download failed: Redirect status ${response.status} with no Location header`);
+      }
+      currentUrl = new URL(location, validatedUrl).toString();
+      redirectCount++;
+      continue;
+    }
+
+    return response;
+  }
+
+  throw new Error(`Font download failed: Too many redirects (exceeded ${maxRedirects})`);
 }
 
 /**
@@ -81,9 +255,9 @@ export function getSystemFont(): string | null {
     '/usr/share/fonts/truetype/dejavu/DejaVuSans.ttf',
     '/usr/share/fonts/TTF/DejaVuSans.ttf',
     // Windows - Segoe UI has better Unicode than Arial
-    'C:\\Windows\\Fonts\\segoeui.ttf',
-    'C:\\Windows\\Fonts\\NotoSans-Regular.ttf',
-    'C:\\Windows\\Fonts\\arial.ttf',
+    'C:WindowsFontssegoeui.ttf',
+    'C:WindowsFontsNotoSans-Regular.ttf',
+    'C:WindowsFontsarial.ttf',
   ];
 
   for (const fontPath of unicodeSupportedFonts) {
@@ -107,10 +281,13 @@ async function downloadToTemp(url: string): Promise<string> {
   const tempDir = join(tmpdir(), 'mcp-pdf-fonts');
   await mkdir(tempDir, { recursive: true });
 
-  // Extract filename from URL or generate one
-  const urlPath = new URL(url).pathname;
-  const filename = urlPath.split('/').pop() || `font-${Date.now()}.woff2`;
-  const tempPath = join(tempDir, filename);
+  // Validate URL and resolve font safely (SSRF protection)
+  const validatedUrl = await validateFontUrl(url);
+
+  // Extract filename safely
+  const rawFilename = validatedUrl.pathname.split('/').pop() || `font-${Date.now()}.woff2`;
+  const sanitizedFilename = rawFilename.replace(/[^a-zA-Z0-9._-]/g, '_') || `font-${Date.now()}.woff2`;
+  const tempPath = join(tempDir, sanitizedFilename);
 
   // Check if already cached
   if (existsSync(tempPath)) {
@@ -118,7 +295,7 @@ async function downloadToTemp(url: string): Promise<string> {
   }
 
   // Download if not cached
-  const response = await fetch(url);
+  const response = await fetchSafe(url);
   if (!response.ok) {
     throw new Error(`Font download failed (HTTP ${response.status}): ${response.statusText}`);
   }
