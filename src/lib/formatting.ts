@@ -210,3 +210,24 @@ export function registerFieldFilters(): void {
     return formatTenure(start, end);
   });
 }
+
+/**
+ * Ensure a value is a string.
+ */
+export function ensureString(value: unknown): string {
+  if (typeof value === 'string') return value;
+  if (value == null) return '';
+  return String(value);
+}
+
+/**
+ * Convert content to array of paragraphs.
+ */
+export function paragraphsFromContent(content: string | string[] | undefined): string[] {
+  if (!content) return [];
+  if (Array.isArray(content)) return content.filter(Boolean);
+  return content
+    .split(/\n\n+/)
+    .map((p) => p.trim())
+    .filter(Boolean);
+}

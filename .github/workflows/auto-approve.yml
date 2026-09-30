@@ -1,7 +1,7 @@
 name: Auto Approve
 
 on:
-  pull_request_target:
+  pull_request:
     types: [opened, synchronize, reopened, ready_for_review]
 
 permissions:
@@ -14,5 +14,6 @@ jobs:
     steps:
       - name: Approve pull request
         uses: hmarr/auto-approve-action@v4
+        continue-on-error: true
         with:
           review-message: 'Auto-approved: green CI + automated PR from Jules/owner.'

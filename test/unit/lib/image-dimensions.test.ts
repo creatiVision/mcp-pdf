@@ -32,7 +32,7 @@
 import assert from 'assert';
 import PDFDocument from 'pdfkit';
 import { deflateSync } from 'zlib';
-import { type ImageDimensions, parseImageDimensions } from '../../../src/lib/image-dimensions.ts';
+import { type ImageDimensions, getImageDimensions, getLocalImageDimensions, parseImageDimensions, resolveImageDimensions } from '../../../src/lib/image-dimensions.ts';
 
 // ---------------------------------------------------------------------------
 // Deterministic PRNG (fixed seed - results are reproducible across runs)
@@ -618,8 +618,6 @@ describe('image-dimensions: fuzz (no throw, no hang, valid values)', function ()
 // PART 4 - Async image dimensions resolution and file utilities
 // ---------------------------------------------------------------------------
 
-import { getLocalImageDimensions, getImageDimensions, resolveImageDimensions } from '../../../src/lib/image-dimensions.ts';
-
 describe('image-dimensions: async file resolution and overrides', () => {
   it('getLocalImageDimensions correctly reads intrinsic dimensions asynchronously', async () => {
     const dims = await getLocalImageDimensions('./resources/logo.png');
@@ -679,5 +677,30 @@ describe('image-dimensions: async file resolution and overrides', () => {
         message: 'Cannot determine image dimensions for: ./non-existent-image.png. File may not exist or format is unsupported. Please provide explicit width and height.',
       }
     );
+  });
+});
+
+describe('image-dimensions: path traversal security checks', () => {
+  it('blocks path traversal via relative paths outside working directory', async () => {
+    await assert.rejects(
+      async () => {
+        await resolveImageDimensions('../../../etc/passwd');
+      },
+      /Cannot determine image dimensions/
+    );
+  });
+
+  it('blocks path traversal via absolute paths outside working directory', async () => {
+    await assert.rejects(
+      async () => {
+        await resolveImageDimensions('/etc/passwd');
+      },
+      /Cannot determine image dimensions/
+    );
+  });
+
+  it('allows valid explicit dimensions even if path is outside working directory', async () => {
+    const dims = await resolveImageDimensions('../../../etc/passwd', 100, 200);
+    assert.deepStrictEqual(dims, { width: 100, height: 200 });
   });
 });

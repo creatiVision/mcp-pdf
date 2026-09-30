@@ -62,7 +62,7 @@ export function tokenizeMarkdown(markdown: string): Token[] {
     // bold / italic / bold+italic
     if (node.type === 'strong' || node.type === 'emphasis') {
       // Skip if parent is also a styled node (we want the outermost one)
-      if (parent?.type === 'strong' || parent?.type === 'emphasis') {
+      if (parent?.type === 'strong' || parent?.type === 'emphasis' || parent?.type === 'link') {
         return;
       }
 

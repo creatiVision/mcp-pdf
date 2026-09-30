@@ -12,7 +12,7 @@
 
 import type PDFKit from 'pdfkit';
 import { measureTextHeight } from '../content-measure.ts';
-import { renderField } from '../formatting.ts';
+import { ensureString, paragraphsFromContent, renderField } from '../formatting.ts';
 import type {
   CompanyHeaderElement,
   CredentialData,
@@ -33,49 +33,14 @@ import type {
   TextElement,
 } from '../ir/types.ts';
 import { measureMarkdownTextHeight } from '../pdf-helpers.ts';
-import type { TypographyOptions } from '../types/typography.ts';
+import { getResolvedStyle, type TypographyOptions } from '../types/typography.ts';
 import { calculateEntryColumnWidths, type MeasureContext } from './types.ts';
 
 // =============================================================================
 // Helper Functions
 // =============================================================================
 
-/**
- * Ensure a value is a string.
- */
-function ensureString(value: unknown): string {
-  if (typeof value === 'string') return value;
-  if (value == null) return '';
-  return String(value);
-}
 
-/**
- * Get resolved text style values from typography.
- */
-function getResolvedStyle(typography: TypographyOptions) {
-  const { content } = typography;
-  return {
-    fontSize: content.fontSize,
-    lineGap: (content.lineHeight ?? 1.3) * content.fontSize - content.fontSize,
-    paragraphMarginBottom: content.paragraphMarginBottom,
-    bulletMarginBottom: content.bulletMarginBottom,
-    bulletGap: content.bulletGap,
-    blockMarginBottom: content.bulletGap + content.bulletMarginBottom,
-    itemMarginBottom: content.itemMarginBottom,
-  };
-}
-
-/**
- * Convert content to array of paragraphs.
- */
-function paragraphsFromContent(content: string | string[] | undefined): string[] {
-  if (!content) return [];
-  if (Array.isArray(content)) return content.filter(Boolean);
-  return content
-    .split(/\n\n+/)
-    .map((p) => p.trim())
-    .filter(Boolean);
-}
 
 // =============================================================================
 // Element Measurers

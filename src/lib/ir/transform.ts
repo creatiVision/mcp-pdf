@@ -7,7 +7,7 @@
  */
 
 import type { ResumeSchema } from '../../../assets/resume.ts';
-import { mergeFieldTemplates, registerFieldFilters } from '../formatting.ts';
+import { ensureString, mergeFieldTemplates, paragraphsFromContent, registerFieldFilters } from '../formatting.ts';
 import type {
   ContactItem,
   CredentialData,
@@ -131,26 +131,6 @@ function inferEntryVariant(source: string): 'work' | 'education' {
   return 'work'; // Default for work, volunteer, projects, etc.
 }
 
-/**
- * Convert content to array of paragraphs.
- */
-function paragraphsFromContent(content: string | string[] | undefined): string[] {
-  if (!content) return [];
-  if (Array.isArray(content)) return content.filter(Boolean);
-  return content
-    .split(/\n\n+/)
-    .map((p) => p.trim())
-    .filter(Boolean);
-}
-
-/**
- * Ensure a value is a string.
- */
-function ensureString(value: unknown): string {
-  if (typeof value === 'string') return value;
-  if (value == null) return '';
-  return String(value);
-}
 
 /**
  * Group entries by company name (for work entries).
