@@ -33,7 +33,7 @@ import type {
   TextElement,
 } from '../ir/types.ts';
 import { measureMarkdownTextHeight } from '../pdf-helpers.ts';
-import type { TypographyOptions } from '../types/typography.ts';
+import { getResolvedStyle, type TypographyOptions } from '../types/typography.ts';
 import { calculateEntryColumnWidths, type MeasureContext } from './types.ts';
 
 // =============================================================================
@@ -47,22 +47,6 @@ function ensureString(value: unknown): string {
   if (typeof value === 'string') return value;
   if (value == null) return '';
   return String(value);
-}
-
-/**
- * Get resolved text style values from typography.
- */
-function getResolvedStyle(typography: TypographyOptions) {
-  const { content } = typography;
-  return {
-    fontSize: content.fontSize,
-    lineGap: (content.lineHeight ?? 1.3) * content.fontSize - content.fontSize,
-    paragraphMarginBottom: content.paragraphMarginBottom,
-    bulletMarginBottom: content.bulletMarginBottom,
-    bulletGap: content.bulletGap,
-    blockMarginBottom: content.bulletGap + content.bulletMarginBottom,
-    itemMarginBottom: content.itemMarginBottom,
-  };
 }
 
 /**
