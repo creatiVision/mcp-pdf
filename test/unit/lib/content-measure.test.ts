@@ -1,191 +1,185 @@
 import assert from 'assert';
-import type PDFKit from 'pdfkit';
+import PDFDocument from 'pdfkit';
 import {
-  createWidthMeasurer,
-  measureCircleHeight,
-  measureGroupHeight,
-  measureImageHeight,
-  measureLineHeight,
-  measureMoveDown,
-  measureRectHeight,
   measureTextHeight,
   measureTextWidth,
+  createWidthMeasurer,
+  measureImageHeight,
+  measureRectHeight,
+  measureCircleHeight,
+  measureLineHeight,
+  measureMoveDown,
+  measureGroupHeight,
 } from '../../../src/lib/content-measure.ts';
+import { DEFAULT_HEADING_FONT_SIZE, DEFAULT_TEXT_FONT_SIZE } from '../../../src/constants.ts';
+import type { LayoutContent } from '../../../src/lib/yoga-layout.ts';
 
-describe('content-measure', (): void => {
-  // Mock PDFKit Document helper
-  function createMockDoc() {
-    let currentFont = 'Helvetica';
-    let currentFontSize = 12;
+describe('content-measure utilities', () => {
+  let doc: PDFKit.PDFDocument;
 
-    const doc = {
-      _font: { name: currentFont },
-      _fontSize: currentFontSize,
-      page: {
-        width: 612,
-        height: 792,
-        margins: { top: 50, bottom: 50, left: 50, right: 50 },
-      },
-      fontSize(size: number) {
-        currentFontSize = size;
-        (this as any)._fontSize = size;
-        return this;
-      },
-      font(name: string) {
-        currentFont = name;
-        (this as any)._font = { name };
-        return this;
-      },
-      heightOfString(text: string, options?: any) {
-        // Simple mock calculation based on string length & width option
-        const width = options?.width || 512;
-        const lineCount = Math.max(1, Math.ceil((text.length * 7) / width));
-        const lineGap = options?.lineGap || 0;
-        return lineCount * (currentFontSize + 2 + lineGap);
-      },
-      widthOfString(text: string) {
-        return text.length * 7;
-      },
-      currentLineHeight(includeGap = false) {
-        return currentFontSize + (includeGap ? 2 : 0);
-      },
-    };
+  beforeEach(() => {
+    doc = new PDFDocument({ margin: 50 });
+  });
 
-    return doc as unknown as PDFKit.PDFDocument;
-  }
-
-  describe('measureTextHeight', (): void => {
-    it('returns 0 for empty or whitespace text', (): void => {
-      const doc = createMockDoc();
+  describe('measureTextHeight', () => {
+    it('returns 0 for empty or whitespace-only text', () => {
       assert.strictEqual(measureTextHeight(doc, '', 12, 'Helvetica', false), 0);
       assert.strictEqual(measureTextHeight(doc, '   ', 12, 'Helvetica', false), 0);
-      assert.strictEqual(measureTextHeight(doc, null as any, 12, 'Helvetica', false), 0);
+      assert.strictEqual(measureTextHeight(doc, null as unknown as string, 12, 'Helvetica', false), 0);
     });
 
-    it('measures plain text height without emoji and restores font state', (): void => {
-      const doc = createMockDoc();
-      const initialFont = (doc as any)._font.name;
-      const initialFontSize = (doc as any)._fontSize;
-
-      const height = measureTextHeight(doc, 'Hello world', 14, 'Helvetica-Bold', false);
-
-      assert.ok(height > 0);
-      assert.strictEqual((doc as any)._font.name, initialFont);
-      assert.strictEqual((doc as any)._fontSize, initialFontSize);
+    it('measures height for plain text without emoji', () => {
+      const height = measureTextHeight(doc, 'Hello world', 12, 'Helvetica', false);
+      assert.ok(height > 0, 'Height should be greater than 0');
     });
 
-    it('measures text with options (width, indent, lineGap)', (): void => {
-      const doc = createMockDoc();
-      const height = measureTextHeight(doc, 'A quick brown fox jumps over the lazy dog', 12, 'Helvetica', false, {
-        width: 100,
-        indent: 10,
-        lineGap: 4,
-      });
+    it('measures height with custom options (width, lineGap, indent)', () => {
+      const normalHeight = measureTextHeight(doc, 'This is a longer piece of text that will wrap when given a narrow width.', 12, 'Helvetica', false, { width: 500 });
+      const wrappedHeight = measureTextHeight(doc, 'This is a longer piece of text that will wrap when given a narrow width.', 12, 'Helvetica', false, { width: 100 });
+      assert.ok(wrappedHeight > normalHeight, 'Wrapped text should have greater height');
 
-      assert.ok(height > 0);
+      const heightWithLineGap = measureTextHeight(doc, 'Line 1\nLine 2', 12, 'Helvetica', false, { lineGap: 10 });
+      const heightWithoutLineGap = measureTextHeight(doc, 'Line 1\nLine 2', 12, 'Helvetica', false, { lineGap: 0 });
+      assert.ok(heightWithLineGap > heightWithoutLineGap, 'Text with lineGap should have greater height');
+
+      const heightWithIndent = measureTextHeight(doc, 'Short text wrapped with huge indent', 12, 'Helvetica', false, { width: 100, indent: 80 });
+      const heightNoIndent = measureTextHeight(doc, 'Short text wrapped with huge indent', 12, 'Helvetica', false, { width: 100, indent: 0 });
+      assert.ok(heightWithIndent > heightNoIndent, 'Text with indent reducing available width should be taller');
     });
 
-    it('measures text with emoji available and emoji present', (): void => {
-      const doc = createMockDoc();
-      const heightWithEmoji = measureTextHeight(doc, 'Hello 😀 world with extra long text that wraps across lines', 12, 'Helvetica', true, {
-        width: 100,
-      });
+    it('measures height for text with emoji when emoji rendering is available', () => {
+      const height = measureTextHeight(doc, 'Hello 😀 world with emoji that might wrap if long enough', 12, 'Helvetica', true, { width: 100 });
+      assert.ok(height > 0, 'Emoji height should be greater than 0');
+    });
 
-      assert.ok(heightWithEmoji > 0);
+    it('restores previous font and fontSize state', () => {
+      doc.fontSize(18).font('Helvetica-Bold');
+      const savedFont = (doc as unknown as { _font?: { name: string } })._font?.name;
+      const savedFontSize = (doc as unknown as { _fontSize?: number })._fontSize;
+
+      measureTextHeight(doc, 'Test restore font state', 10, 'Helvetica', false);
+
+      const currentFont = (doc as unknown as { _font?: { name: string } })._font?.name;
+      const currentFontSize = (doc as unknown as { _fontSize?: number })._fontSize;
+
+      assert.strictEqual(currentFont, savedFont);
+      assert.strictEqual(currentFontSize, savedFontSize);
     });
   });
 
-  describe('measureTextWidth', (): void => {
-    it('returns 0 for empty or whitespace text', (): void => {
-      const doc = createMockDoc();
+  describe('measureTextWidth', () => {
+    it('returns 0 for empty or whitespace-only text', () => {
       assert.strictEqual(measureTextWidth(doc, '', 12, 'Helvetica', false), 0);
-      assert.strictEqual(measureTextWidth(doc, '  \n\t ', 12, 'Helvetica', false), 0);
-      assert.strictEqual(measureTextWidth(doc, undefined as any, 12, 'Helvetica', false), 0);
+      assert.strictEqual(measureTextWidth(doc, '   ', 12, 'Helvetica', false), 0);
+      assert.strictEqual(measureTextWidth(doc, null as unknown as string, 12, 'Helvetica', false), 0);
     });
 
-    it('measures text width without emoji and restores font state', (): void => {
-      const doc = createMockDoc();
-      const initialFont = (doc as any)._font.name;
-      const initialFontSize = (doc as any)._fontSize;
+    it('measures width for plain text without emoji', () => {
+      const width = measureTextWidth(doc, 'Hello world', 12, 'Helvetica', false);
+      assert.ok(width > 0, 'Width should be greater than 0');
 
-      const width = measureTextWidth(doc, 'Test string', 16, 'Times-Roman', false);
-
-      assert.strictEqual(width, 'Test string'.length * 7);
-      assert.strictEqual((doc as any)._font.name, initialFont);
-      assert.strictEqual((doc as any)._fontSize, initialFontSize);
+      const widerWidth = measureTextWidth(doc, 'Hello world', 24, 'Helvetica', false);
+      assert.ok(widerWidth > width, 'Larger font size should yield greater width');
     });
 
-    it('measures text width with emoji segments', (): void => {
-      const doc = createMockDoc();
-      const width = measureTextWidth(doc, 'Hello 🎉 World', 12, 'Helvetica', true);
-
-      assert.ok(width > 0);
+    it('measures width for text with emoji when emoji rendering is enabled', () => {
+      const plainWidth = measureTextWidth(doc, 'Hello  world', 12, 'Helvetica', true);
+      const emojiWidth = measureTextWidth(doc, 'Hello 😀 world', 12, 'Helvetica', true);
+      assert.ok(emojiWidth > plainWidth, 'Text with emoji should be wider than with spaces');
     });
-  });
 
-  describe('createWidthMeasurer', (): void => {
-    it('returns a function that measures LayoutContent elements', (): void => {
-      const doc = createMockDoc();
-      const measurer = createWidthMeasurer(doc, 'Helvetica', 'Helvetica-Bold', true);
+    it('restores font and font size state', () => {
+      doc.fontSize(14).font('Helvetica-Oblique');
+      const savedFont = (doc as unknown as { _font?: { name: string } })._font?.name;
+      const savedFontSize = (doc as unknown as { _fontSize?: number })._fontSize;
 
-      // Non-text/heading types return 0
-      assert.strictEqual(measurer({ type: 'image' } as any), 0);
-      assert.strictEqual(measurer({ type: 'text', text: '' } as any), 0);
+      measureTextWidth(doc, 'Restoration test', 10, 'Helvetica', false);
 
-      // Text element with default font size
-      const textWidth = measurer({ type: 'text', text: 'Sample' } as any);
-      assert.ok(textWidth > 0);
+      const currentFont = (doc as unknown as { _font?: { name: string } })._font?.name;
+      const currentFontSize = (doc as unknown as { _fontSize?: number })._fontSize;
 
-      // Heading element with custom font size and bold font
-      const headingWidth = measurer({ type: 'heading', text: 'Heading', fontSize: 20, bold: true } as any);
-      assert.ok(headingWidth > 0);
-
-      // Heading element with bold: false uses regular font
-      const headingRegularWidth = measurer({ type: 'heading', text: 'Heading', fontSize: 20, bold: false } as any);
-      assert.ok(headingRegularWidth > 0);
+      assert.strictEqual(currentFont, savedFont);
+      assert.strictEqual(currentFontSize, savedFontSize);
     });
   });
 
-  describe('measureImageHeight', (): void => {
-    it('returns specifiedHeight when provided', (): void => {
-      assert.strictEqual(measureImageHeight(150, 100, 200, 400), 150);
+  describe('createWidthMeasurer', () => {
+    const regularFont = 'Helvetica';
+    const boldFont = 'Helvetica-Bold';
+
+    it('returns 0 for non-text and non-heading content or empty text', () => {
+      const measurer = createWidthMeasurer(doc, regularFont, boldFont, false);
+
+      assert.strictEqual(measurer({ type: 'rect', width: 100, height: 50 } as unknown as LayoutContent), 0);
+      assert.strictEqual(measurer({ type: 'text', text: '' } as unknown as LayoutContent), 0);
     });
 
-    it('calculates height from specifiedWidth and natural dimensions', (): void => {
-      // 100 * (400 / 200) = 200
-      assert.strictEqual(measureImageHeight(undefined, 100, 200, 400), 200);
+    it('measures text content using provided font settings or defaults', () => {
+      const measurer = createWidthMeasurer(doc, regularFont, boldFont, false);
+
+      const regularTextWidth = measurer({ type: 'text', text: 'Sample Text' } as unknown as LayoutContent);
+      const boldTextWidth = measurer({ type: 'text', text: 'Sample Text', bold: true } as unknown as LayoutContent);
+
+      assert.ok(regularTextWidth > 0);
+      assert.ok(boldTextWidth > 0);
+
+      const customSizeWidth = measurer({ type: 'text', text: 'Sample Text', fontSize: 20 } as unknown as LayoutContent);
+      const defaultSizeWidth = measurer({ type: 'text', text: 'Sample Text' } as unknown as LayoutContent);
+      assert.ok(customSizeWidth > defaultSizeWidth);
     });
 
-    it('returns naturalHeight when specifiedHeight and specifiedWidth are not provided', (): void => {
-      assert.strictEqual(measureImageHeight(undefined, undefined, 200, 300), 300);
+    it('measures heading content using heading defaults and bold settings', () => {
+      const measurer = createWidthMeasurer(doc, regularFont, boldFont, false);
+
+      const defaultHeadingWidth = measurer({ type: 'heading', text: 'Heading Text' } as unknown as LayoutContent);
+      const notBoldHeadingWidth = measurer({ type: 'heading', text: 'Heading Text', bold: false } as unknown as LayoutContent);
+
+      assert.ok(defaultHeadingWidth > 0);
+      assert.ok(notBoldHeadingWidth > 0);
+    });
+  });
+
+  describe('measureImageHeight', () => {
+    it('returns specified height if provided', () => {
+      assert.strictEqual(measureImageHeight(150, 200, 1000, 500), 150);
+      assert.strictEqual(measureImageHeight(150), 150);
     });
 
-    it('returns 0 when dimensions are unavailable', (): void => {
+    it('calculates aspect ratio height if width and natural dimensions are provided', () => {
+      // Natural 1000x500 (2:1 aspect ratio), specified width 200 => height 100
+      assert.strictEqual(measureImageHeight(undefined, 200, 1000, 500), 100);
+    });
+
+    it('returns natural height if no specified dimensions but naturalHeight exists', () => {
+      assert.strictEqual(measureImageHeight(undefined, undefined, 1000, 500), 500);
+    });
+
+    it('returns 0 when dimensions cannot be determined', () => {
+      assert.strictEqual(measureImageHeight(undefined, 200, undefined, undefined), 0);
       assert.strictEqual(measureImageHeight(undefined, undefined, undefined, undefined), 0);
     });
   });
 
-  describe('shape and layout measurement helpers', (): void => {
-    it('measureRectHeight returns height', (): void => {
-      assert.strictEqual(measureRectHeight(50), 50);
+  describe('geometric & miscellaneous measurement helpers', () => {
+    it('measureRectHeight returns height', () => {
+      assert.strictEqual(measureRectHeight(42), 42);
     });
 
-    it('measureCircleHeight returns diameter', (): void => {
-      assert.strictEqual(measureCircleHeight(25), 50);
+    it('measureCircleHeight returns diameter', () => {
+      assert.strictEqual(measureCircleHeight(15), 30);
     });
 
-    it('measureLineHeight returns absolute difference between y1 and y2', (): void => {
-      assert.strictEqual(measureLineHeight(10, 60), 50);
-      assert.strictEqual(measureLineHeight(100, 40), 60);
+    it('measureLineHeight returns absolute y distance', () => {
+      assert.strictEqual(measureLineHeight(10, 50), 40);
+      assert.strictEqual(measureLineHeight(50, 10), 40);
     });
 
-    it('measureMoveDown calculates height based on line height', (): void => {
-      const doc = createMockDoc();
-      // currentLineHeight() without gap returns 12
-      assert.strictEqual(measureMoveDown(doc, 2), 24);
+    it('measureMoveDown returns points corresponding to doc line height', () => {
+      const lineHeight = doc.currentLineHeight();
+      assert.strictEqual(measureMoveDown(doc, 2), 2 * lineHeight);
     });
 
-    it('measureGroupHeight sums item heights', (): void => {
+    it('measureGroupHeight sums heights of items', () => {
       const items = [10, 20, 30];
       const total = measureGroupHeight(items, (item) => item * 2);
       assert.strictEqual(total, 120);
