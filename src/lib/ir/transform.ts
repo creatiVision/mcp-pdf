@@ -7,7 +7,7 @@
  */
 
 import type { ResumeSchema } from '../../../assets/resume.ts';
-import { mergeFieldTemplates, paragraphsFromContent, registerFieldFilters } from '../formatting.ts';
+import { ensureString, mergeFieldTemplates, paragraphsFromContent, registerFieldFilters } from '../formatting.ts';
 import type {
   ContactItem,
   CredentialData,
@@ -131,15 +131,6 @@ function inferEntryVariant(source: string): 'work' | 'education' {
   return 'work'; // Default for work, volunteer, projects, etc.
 }
 
-
-/**
- * Ensure a value is a string.
- */
-function ensureString(value: unknown): string {
-  if (typeof value === 'string') return value;
-  if (value == null) return '';
-  return String(value);
-}
 
 /**
  * Group entries by company name (for work entries).

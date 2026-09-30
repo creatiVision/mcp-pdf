@@ -2,6 +2,7 @@ import assert from 'assert';
 import {
   calculateTenure,
   DEFAULT_FIELD_TEMPLATES,
+  ensureString,
   formatDate,
   formatTenure,
   mergeFieldTemplates,
@@ -11,6 +12,25 @@ import {
 } from '../../../src/lib/formatting.ts';
 
 describe('formatting', (): void => {
+  describe('ensureString', () => {
+    it('returns string as-is', () => {
+      assert.strictEqual(ensureString('hello'), 'hello');
+      assert.strictEqual(ensureString(''), '');
+    });
+
+    it('returns empty string for null and undefined', () => {
+      assert.strictEqual(ensureString(null), '');
+      assert.strictEqual(ensureString(undefined), '');
+    });
+
+    it('converts non-string values to string', () => {
+      assert.strictEqual(ensureString(123), '123');
+      assert.strictEqual(ensureString(true), 'true');
+      assert.strictEqual(ensureString(false), 'false');
+      assert.strictEqual(ensureString({ toString: () => 'custom' }), 'custom');
+    });
+  });
+
   describe('paragraphsFromContent', () => {
     it('returns empty array when content is undefined or empty', () => {
       assert.deepStrictEqual(paragraphsFromContent(undefined), []);

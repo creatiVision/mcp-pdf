@@ -12,7 +12,7 @@
 
 import type PDFKit from 'pdfkit';
 import { measureTextHeight } from '../content-measure.ts';
-import { paragraphsFromContent, renderField } from '../formatting.ts';
+import { ensureString, paragraphsFromContent, renderField } from '../formatting.ts';
 import type {
   CompanyHeaderElement,
   CredentialData,
@@ -40,14 +40,6 @@ import { calculateEntryColumnWidths, type MeasureContext } from './types.ts';
 // Helper Functions
 // =============================================================================
 
-/**
- * Ensure a value is a string.
- */
-function ensureString(value: unknown): string {
-  if (typeof value === 'string') return value;
-  if (value == null) return '';
-  return String(value);
-}
 
 
 // =============================================================================

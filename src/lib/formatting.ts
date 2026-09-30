@@ -212,6 +212,15 @@ export function registerFieldFilters(): void {
 }
 
 /**
+ * Ensure a value is a string.
+ */
+export function ensureString(value: unknown): string {
+  if (typeof value === 'string') return value;
+  if (value == null) return '';
+  return String(value);
+}
+
+/**
  * Convert content to array of paragraphs.
  */
 export function paragraphsFromContent(content: string | string[] | undefined): string[] {
