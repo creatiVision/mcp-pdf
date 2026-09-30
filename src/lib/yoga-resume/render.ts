@@ -6,7 +6,7 @@
  */
 
 import type PDFKit from 'pdfkit';
-import { renderField } from '../formatting.ts';
+import { paragraphsFromContent, renderField } from '../formatting.ts';
 import type { CompanyHeaderElement, CredentialData, CredentialListElement, DividerElement, EntryData, EntryHeaderElement, FieldTemplates, GroupElement, HeaderElement, KeywordListElement, LanguageListElement, ReferenceListElement, SectionTitleElement, StructuredContentElement, TextElement } from '../ir/types.ts';
 import { measureMarkdownTextHeight, renderText } from '../pdf-helpers.ts';
 import type { TypographyOptions } from '../types/typography.ts';
@@ -37,18 +37,6 @@ function getResolvedStyle(typography: TypographyOptions) {
     itemMarginBottom: content.itemMarginBottom,
     blockMarginBottom: content.bulletGap + content.bulletMarginBottom,
   };
-}
-
-/**
- * Convert content to array of paragraphs.
- */
-function paragraphsFromContent(content: string | string[] | undefined): string[] {
-  if (!content) return [];
-  if (Array.isArray(content)) return content.filter(Boolean);
-  return content
-    .split(/\n\n+/)
-    .map((p) => p.trim())
-    .filter(Boolean);
 }
 
 // =============================================================================
