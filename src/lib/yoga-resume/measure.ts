@@ -341,7 +341,7 @@ export function measureStructuredContent(ctx: MeasureContext, element: Structure
   const bulletGap = element.spacing?.bulletGap ?? content.bulletGap;
   const bulletMargin = element.spacing?.bulletMarginBottom ?? content.bulletMarginBottom;
 
-  const summaries = Array.isArray(element.summary) ? element.summary : element.summary?.split(/\n\n+/).filter(Boolean) || [];
+  const summaries = paragraphsFromContent(element.summary);
   const hasSummary = summaries.length > 0;
   const hasBullets = element.bullets && element.bullets.length > 0;
 
