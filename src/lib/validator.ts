@@ -13,6 +13,7 @@ import * as url from 'url';
 
 const __dirname = path.dirname(url.fileURLToPath(import.meta.url));
 const packageRoot = moduleRoot(__dirname);
+const schemaPath = join(packageRoot, 'assets/resume.schema.json');
 
 const ajv = new Ajv({
   allErrors: true,
@@ -24,6 +25,15 @@ addFormats(ajv);
 // Cache the compiled validator or promise for compiled validator
 let cachedValidate: ReturnType<typeof ajv.compile> | null = null;
 let validatorPromise: Promise<ReturnType<typeof ajv.compile>> | null = null;
+
+/**
+ * Compile JSON schema and populate cache
+ */
+function compileSchema(schemaContent: string): ReturnType<typeof ajv.compile> {
+  const schema = JSON.parse(schemaContent);
+  cachedValidate = ajv.compile(schema);
+  return cachedValidate;
+}
 
 /**
  * Get or compile the resume schema validator asynchronously (cached)
@@ -38,12 +48,8 @@ export async function getValidatorAsync(): Promise<ReturnType<typeof ajv.compile
   }
 
   validatorPromise = (async () => {
-    const schemaPath = join(packageRoot, 'assets/resume.schema.json');
     const schemaContent = await readFile(schemaPath, 'utf-8');
-    const schema = JSON.parse(schemaContent);
-
-    cachedValidate = ajv.compile(schema);
-    return cachedValidate;
+    return compileSchema(schemaContent);
   })();
 
   return validatorPromise;
@@ -58,12 +64,8 @@ function getValidator(): ReturnType<typeof ajv.compile> {
   }
 
   // Load and compile the schema once synchronously
-  const schemaPath = join(packageRoot, 'assets/resume.schema.json');
   const schemaContent = readFileSync(schemaPath, 'utf-8');
-  const schema = JSON.parse(schemaContent);
-
-  cachedValidate = ajv.compile(schema);
-  return cachedValidate;
+  return compileSchema(schemaContent);
 }
 
 /**
