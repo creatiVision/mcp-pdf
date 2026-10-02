@@ -82,7 +82,7 @@ describe('formatting', (): void => {
       assert.strictEqual(formatTenure('2019-03', '2022-04'), '3 yrs 1 mo');
     });
 
-    it('defaults end date to current date when end date is omitted or null/undefined', (): void => {
+    it('defaults end date to current date when end date is omitted, empty string, or null/undefined', (): void => {
       const now = new Date();
       const year = now.getFullYear();
       const month = now.getMonth() + 1;
@@ -94,6 +94,12 @@ describe('formatting', (): void => {
 
       assert.strictEqual(formatTenure(startDateStr, undefined), '2 yrs');
       assert.strictEqual(formatTenure(startDateStr, null), '2 yrs');
+      assert.strictEqual(formatTenure(startDateStr, ''), '2 yrs');
+    });
+
+    it('handles mixed date formats (e.g. YYYY and YYYY-MM-DD)', (): void => {
+      assert.strictEqual(formatTenure('2020', '2022-06'), '2 yrs 5 mo');
+      assert.strictEqual(formatTenure('2020-03-15', '2022'), '1 yr 10 mo');
     });
 
     it('returns empty string when end date is earlier than start date', (): void => {
@@ -110,19 +116,41 @@ describe('formatting', (): void => {
   });
 
   describe('calculateTenure', (): void => {
-    it('returns null for empty start date', (): void => {
+    it('returns null for empty or invalid start date', (): void => {
       assert.strictEqual(calculateTenure(undefined, '2023-01'), null);
       assert.strictEqual(calculateTenure(null, '2023-01'), null);
+      assert.strictEqual(calculateTenure('', '2023-01'), null);
+      assert.strictEqual(calculateTenure('invalid', '2023-01'), null);
     });
 
-    it('returns null for invalid start date or end date', (): void => {
-      assert.strictEqual(calculateTenure('invalid', '2023-01'), null);
+    it('returns null for invalid end date', (): void => {
       assert.strictEqual(calculateTenure('2023-01', 'invalid'), null);
     });
 
     it('calculates totalMonths, years, and months correctly', (): void => {
       const res = calculateTenure('2020-01', '2022-07');
       assert.deepStrictEqual(res, { years: 2, months: 6, totalMonths: 30 });
+    });
+
+    it('caps totalMonths at 0 when end date is before start date', (): void => {
+      const res = calculateTenure('2023-05', '2021-01');
+      assert.deepStrictEqual(res, { years: 0, months: 0, totalMonths: 0 });
+    });
+
+    it('defaults end date to current date when end date is omitted or empty', (): void => {
+      const now = new Date();
+      const year = now.getFullYear();
+      const month = now.getMonth() + 1;
+
+      const startYear = year - 1;
+      const startMonthStr = String(month).padStart(2, '0');
+      const startDateStr = `${startYear}-${startMonthStr}`;
+
+      const resUndefined = calculateTenure(startDateStr, undefined);
+      assert.deepStrictEqual(resUndefined, { years: 1, months: 0, totalMonths: 12 });
+
+      const resEmpty = calculateTenure(startDateStr, '');
+      assert.deepStrictEqual(resEmpty, { years: 1, months: 0, totalMonths: 12 });
     });
   });
 
@@ -192,9 +220,14 @@ describe('formatting', (): void => {
       assert.strictEqual(result, 'Present');
     });
 
-    it('uses tenure filter in template', (): void => {
+    it('uses tenure filter in template with start and end dates', (): void => {
       const result = renderField('{{ start | tenure: end }}', { start: '2020-01', end: '2022-01' });
       assert.strictEqual(result, '2 yrs');
+    });
+
+    it('handles tenure filter with empty or missing dates', (): void => {
+      assert.strictEqual(renderField('{{ start | tenure: end }}', { start: null, end: '2022-01' }), '');
+      assert.strictEqual(renderField('{{ start | tenure }}', { start: null }), '');
     });
   });
 });
