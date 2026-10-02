@@ -1,3 +1,4 @@
+import { createHash } from 'crypto';
 import { lookup } from 'dns/promises';
 import emojiRegexFactory from 'emoji-regex';
 import { type Font, openSync as fontkitOpenSync } from 'fontkit';
@@ -287,10 +288,11 @@ async function downloadToTemp(url: string): Promise<string> {
   // Validate URL and resolve font safely (SSRF protection)
   const validatedUrl = await validateFontUrl(url);
 
-  // Extract filename safely
+  // Extract filename safely and hash normalized URL to prevent cache collision attacks
+  const urlHash = createHash('sha256').update(validatedUrl.toString()).digest('hex').slice(0, 16);
   const rawFilename = validatedUrl.pathname.split('/').pop() || `font-${Date.now()}.woff2`;
   const sanitizedFilename = rawFilename.replace(/[^a-zA-Z0-9._-]/g, '_') || `font-${Date.now()}.woff2`;
-  const tempPath = join(tempDir, sanitizedFilename);
+  const tempPath = join(tempDir, `${urlHash}_${sanitizedFilename}`);
 
   // Check if already cached
   if (existsSync(tempPath)) {

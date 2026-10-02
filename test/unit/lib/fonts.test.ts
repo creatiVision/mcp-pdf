@@ -792,4 +792,17 @@ describe('SSRF Protection in Font Downloading', (): void => {
       await assert.rejects(async () => await fonts.resolveFont('http://localhost:8080/font.ttf'), /Font download rejected/);
     });
   });
+  describe("cache key isolation", (): void => {
+    it("differentiates cache files for different URLs with identical filenames", async (): Promise<void> => {
+      const url1 = "https://cdn.jsdelivr.net/npm/@fontsource/noto-sans@5.0.0/files/noto-sans-latin-400-normal.woff2";
+      const url2 = "https://cdn.jsdelivr.net/npm/@fontsource/noto-sans@5.0.1/files/noto-sans-latin-400-normal.woff2";
+
+      const font1 = await fonts.resolveFont(url1);
+      const font2 = await fonts.resolveFont(url2);
+
+      assert.ok(font1 !== null);
+      assert.ok(font2 !== null);
+      assert.notStrictEqual(font1, font2, "Different URLs must result in different cached font paths");
+    });
+  });
 });
