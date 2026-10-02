@@ -1,11 +1,14 @@
-import { lookup } from 'dns/promises';
+import { createHash } from 'node:crypto';
+import { lookup } from 'node:dns/promises';
+import { existsSync } from 'node:fs';
+import { mkdir, writeFile } from 'node:fs/promises';
+import http from 'node:http';
+import https from 'node:https';
+import { isIP } from 'node:net';
+import { tmpdir } from 'node:os';
+import { join } from 'node:path';
 import emojiRegexFactory from 'emoji-regex';
 import { type Font, openSync as fontkitOpenSync } from 'fontkit';
-import { existsSync } from 'fs';
-import { mkdir, writeFile } from 'fs/promises';
-import { isIP } from 'net';
-import { tmpdir } from 'os';
-import { join } from 'path';
 import type PDFKit from 'pdfkit';
 import type { FontConfig } from './types/typography.ts';
 
@@ -89,10 +92,16 @@ export function isPrivateIP(ip: string): boolean {
     if (a === 169 && b === 254) return true;
     // 172.16.0.0/12 (Private network)
     if (a === 172 && b >= 16 && b <= 31) return true;
+    // 192.0.0.0/24 (IETF Protocol Assignments)
+    if (a === 192 && b === 0 && parts[2] === 0) return true;
     // 192.0.2.0/24 (TEST-NET-1)
     if (a === 192 && b === 0 && parts[2] === 2) return true;
+    // 192.88.99.0/24 (6to4 Relay Anycast)
+    if (a === 192 && b === 88 && parts[2] === 99) return true;
     // 192.168.0.0/16 (Private network)
     if (a === 192 && b === 168) return true;
+    // 198.18.0.0/15 (Benchmarking)
+    if (a === 198 && (b === 18 || b === 19)) return true;
     // 198.51.100.0/24 (TEST-NET-2)
     if (a === 198 && b === 51 && parts[2] === 100) return true;
     // 203.0.113.0/24 (TEST-NET-3)
@@ -113,6 +122,10 @@ export function isPrivateIP(ip: string): boolean {
     if (normalized.startsWith('fe8') || normalized.startsWith('fe9') || normalized.startsWith('fea') || normalized.startsWith('feb')) return true;
     // Unique local fc00::/7
     if (normalized.startsWith('fc') || normalized.startsWith('fd')) return true;
+    // Documentation 2001:db8::/32
+    if (normalized.startsWith('2001:db8') || normalized.startsWith('2001:0db8')) return true;
+    // Discard-only 100::/64
+    if (normalized.startsWith('100::')) return true;
 
     return false;
   }
@@ -131,6 +144,10 @@ export function isPrivateHost(hostname: string): boolean {
   return false;
 }
 
+export interface ValidatedUrl extends URL {
+  resolvedAddresses: Array<{ address: string; family: number }>;
+}
+
 /**
  * Validate font URL against SSRF vulnerabilities:
  * - Only allow HTTP/HTTPS
@@ -138,7 +155,7 @@ export function isPrivateHost(hostname: string): boolean {
  * - Perform DNS lookup to verify resolved IP addresses
  * - Enforce optional ALLOWED_FONT_DOMAINS allowlist
  */
-export async function validateFontUrl(urlStr: string): Promise<URL> {
+export async function validateFontUrl(urlStr: string): Promise<ValidatedUrl> {
   let parsedUrl: URL;
   try {
     parsedUrl = new URL(urlStr);
@@ -159,22 +176,26 @@ export async function validateFontUrl(urlStr: string): Promise<URL> {
     throw new Error(`Font download rejected: Access to local/internal host '${hostname}' is disallowed`);
   }
 
+  let addresses: Array<{ address: string; family: number }> = [];
+
   if (isIP(hostname)) {
     if (isPrivateIP(hostname)) {
       throw new Error(`Font download rejected: Access to private/restricted IP address '${hostname}' is disallowed`);
     }
+    addresses = [{ address: hostname, family: isIP(hostname) }];
   } else {
     try {
-      const addresses = await lookup(hostname, { all: true });
-      if (!addresses || addresses.length === 0) {
+      const resolved = await lookup(hostname, { all: true });
+      if (!resolved || resolved.length === 0) {
         throw new Error(`Font download rejected: Could not resolve hostname '${hostname}'`);
       }
 
-      for (const addr of addresses) {
+      for (const addr of resolved) {
         if (isPrivateIP(addr.address)) {
           throw new Error(`Font download rejected: Hostname '${hostname}' resolved to private/restricted IP address '${addr.address}'`);
         }
       }
+      addresses = resolved;
     } catch (err: unknown) {
       if (err instanceof Error && err.message.startsWith('Font download rejected:')) {
         throw err;
@@ -197,20 +218,84 @@ export async function validateFontUrl(urlStr: string): Promise<URL> {
     }
   }
 
-  return parsedUrl;
+  return Object.assign(parsedUrl, { resolvedAddresses: addresses });
+}
+
+interface SafeFetchResponse {
+  ok: boolean;
+  status: number;
+  statusText: string;
+  headers: Headers;
+  arrayBuffer(): Promise<ArrayBuffer>;
+}
+
+function httpRequestPinned(validatedUrl: ValidatedUrl): Promise<SafeFetchResponse> {
+  return new Promise((resolve, reject) => {
+    const protocol = validatedUrl.protocol === 'https:' ? https : http;
+    const addrs = validatedUrl.resolvedAddresses;
+
+    const req = protocol.request(
+      validatedUrl,
+      {
+        method: 'GET',
+        headers: {
+          'User-Agent': 'mcp-pdf-font-downloader',
+          Accept: '*/*',
+        },
+        lookup: (_hostname, options, callback) => {
+          if (options && options.all) {
+            callback(null, addrs);
+          } else if (addrs.length > 0) {
+            callback(null, addrs[0].address, addrs[0].family);
+          } else {
+            callback(new Error('No resolved IP available'), '', 4);
+          }
+        },
+      },
+      (res) => {
+        const chunks: Buffer[] = [];
+        res.on('data', (chunk: Buffer) => chunks.push(chunk));
+        res.on('end', () => {
+          const headersMap = new Headers();
+          for (const [key, val] of Object.entries(res.headers)) {
+            if (Array.isArray(val)) {
+              for (const v of val) headersMap.append(key, v);
+            } else if (val !== undefined) {
+              headersMap.set(key, val);
+            }
+          }
+
+          const buf = Buffer.concat(chunks);
+          const arrayBuf = buf.buffer.slice(buf.byteOffset, buf.byteOffset + buf.byteLength);
+
+          resolve({
+            ok: (res.statusCode ?? 500) >= 200 && (res.statusCode ?? 500) < 300,
+            status: res.statusCode ?? 500,
+            statusText: res.statusMessage ?? '',
+            headers: headersMap,
+            arrayBuffer: async () => arrayBuf,
+          });
+        });
+        res.on('error', reject);
+      }
+    );
+
+    req.on('error', reject);
+    req.end();
+  });
 }
 
 /**
- * Safely fetch a resource with SSRF protection on redirects
+ * Safely fetch a resource with SSRF protection on redirects and DNS pinning
  */
-async function fetchSafe(urlStr: string, maxRedirects = 5): Promise<Response> {
+async function fetchSafe(urlStr: string, maxRedirects = 5): Promise<SafeFetchResponse> {
   let currentUrl = urlStr;
   let redirectCount = 0;
 
   while (redirectCount <= maxRedirects) {
     const validatedUrl = await validateFontUrl(currentUrl);
 
-    const response = await fetch(validatedUrl.toString(), { redirect: 'manual' });
+    const response = await httpRequestPinned(validatedUrl);
 
     if (response.status >= 300 && response.status < 400) {
       const location = response.headers.get('location');
@@ -287,10 +372,11 @@ async function downloadToTemp(url: string): Promise<string> {
   // Validate URL and resolve font safely (SSRF protection)
   const validatedUrl = await validateFontUrl(url);
 
-  // Extract filename safely
-  const rawFilename = validatedUrl.pathname.split('/').pop() || `font-${Date.now()}.woff2`;
-  const sanitizedFilename = rawFilename.replace(/[^a-zA-Z0-9._-]/g, '_') || `font-${Date.now()}.woff2`;
-  const tempPath = join(tempDir, sanitizedFilename);
+  // Extract filename safely using SHA-256 hash of full URL to prevent cache collisions
+  const urlHash = createHash('sha256').update(url).digest('hex').slice(0, 16);
+  const rawFilename = validatedUrl.pathname.split('/').pop() || 'font.woff2';
+  const sanitizedFilename = rawFilename.replace(/[^a-zA-Z0-9._-]/g, '_') || 'font.woff2';
+  const tempPath = join(tempDir, `font-${urlHash}-${sanitizedFilename}`);
 
   // Check if already cached
   if (existsSync(tempPath)) {
@@ -303,7 +389,17 @@ async function downloadToTemp(url: string): Promise<string> {
     throw new Error(`Font download failed (HTTP ${response.status}): ${response.statusText}`);
   }
 
+  const MAX_FONT_SIZE = 20 * 1024 * 1024; // 20 MB max
+  const contentLength = response.headers.get('content-length');
+  if (contentLength && parseInt(contentLength, 10) > MAX_FONT_SIZE) {
+    throw new Error(`Font download failed: File size exceeds maximum allowed limit (${MAX_FONT_SIZE} bytes)`);
+  }
+
   const buffer = await response.arrayBuffer();
+  if (buffer.byteLength > MAX_FONT_SIZE) {
+    throw new Error(`Font download failed: Downloaded file size exceeds maximum allowed limit (${MAX_FONT_SIZE} bytes)`);
+  }
+
   await writeFile(tempPath, Buffer.from(buffer));
   return tempPath;
 }
