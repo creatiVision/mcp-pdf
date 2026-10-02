@@ -1,5 +1,5 @@
 import assert from 'assert';
-import { validateResume, validateResumeAsync } from '../../../src/lib/validator.ts';
+import { getValidatorAsync, validateResume, validateResumeAsync } from '../../../src/lib/validator.ts';
 
 describe('validateResume', () => {
   describe('Valid Resumes', () => {
@@ -174,6 +174,30 @@ describe('validateResume', () => {
       assert.ok(Array.isArray(result.errors));
       assert.ok(result.errors.length >= 2);
     });
+
+    it('returns valid: false and captures multiple schema errors across sections', () => {
+      const resume = {
+        basics: {
+          email: 'invalid-email',
+          url: 'invalid-url',
+        },
+        work: [
+          {
+            startDate: '2020/01/01', // Invalid format
+          },
+        ],
+        certificates: [
+          {
+            url: 'not-a-url',
+          },
+        ],
+      };
+
+      const result = validateResume(resume);
+      assert.strictEqual(result.valid, false);
+      assert.ok(Array.isArray(result.errors));
+      assert.ok(result.errors.length >= 4);
+    });
   });
 
   describe('Edge Cases and Invalid Inputs', () => {
@@ -199,6 +223,140 @@ describe('validateResume', () => {
       const result = validateResume(['not', 'a', 'resume', 'object']);
       assert.strictEqual(result.valid, false);
       assert.ok(Array.isArray(result.errors));
+    });
+  });
+
+  describe('Validation Error Formatting and Fallbacks', () => {
+    it('handles undefined or null errors array in validator', async () => {
+      const validator = await getValidatorAsync();
+      let overrideErrors: any = null;
+
+      Object.defineProperty(validator, 'errors', {
+        get: () => (overrideErrors !== null ? overrideErrors : (validator as any)._errors),
+        set: (v) => {
+          (validator as any)._errors = v;
+        },
+        configurable: true,
+      });
+
+      try {
+        overrideErrors = undefined;
+        const result = validateResume({ basics: { email: 'invalid' } });
+        assert.strictEqual(result.valid, false);
+        assert.deepStrictEqual(result.errors, ['Unknown validation error']);
+      } finally {
+        overrideErrors = null;
+      }
+    });
+
+    it('formats error with empty instancePath as "root: message"', async () => {
+      const validator = await getValidatorAsync();
+      let overrideErrors: any = null;
+
+      Object.defineProperty(validator, 'errors', {
+        get: () => (overrideErrors !== null ? overrideErrors : (validator as any)._errors),
+        set: (v) => {
+          (validator as any)._errors = v;
+        },
+        configurable: true,
+      });
+
+      try {
+        overrideErrors = [{ instancePath: '', message: 'custom schema error' }];
+        const result = validateResume({ basics: { email: 'invalid' } });
+        assert.strictEqual(result.valid, false);
+        assert.deepStrictEqual(result.errors, ['root: custom schema error']);
+      } finally {
+        overrideErrors = null;
+      }
+    });
+
+    it('formats error with missing message as "<path>: Unknown error"', async () => {
+      const validator = await getValidatorAsync();
+      let overrideErrors: any = null;
+
+      Object.defineProperty(validator, 'errors', {
+        get: () => (overrideErrors !== null ? overrideErrors : (validator as any)._errors),
+        set: (v) => {
+          (validator as any)._errors = v;
+        },
+        configurable: true,
+      });
+
+      try {
+        overrideErrors = [{ instancePath: '/basics/name', message: undefined }];
+        const result = validateResume({ basics: { email: 'invalid' } });
+        assert.strictEqual(result.valid, false);
+        assert.deepStrictEqual(result.errors, ['/basics/name: Unknown error']);
+      } finally {
+        overrideErrors = null;
+      }
+    });
+  });
+
+  describe('Exception Handling in Setup & Validation', () => {
+    it('handles Error thrown during synchronous validation setup', () => {
+      const throwingResume = new Proxy(
+        {},
+        {
+          get() {
+            throw new Error('Sync setup or property access failed');
+          },
+        }
+      );
+
+      const result = validateResume(throwingResume);
+      assert.strictEqual(result.valid, false);
+      assert.strictEqual(result.errors?.length, 1);
+      assert.strictEqual(result.errors![0], 'Schema validation setup failed: Sync setup or property access failed');
+    });
+
+    it('handles non-Error thrown during synchronous validation setup', () => {
+      const throwingResume = new Proxy(
+        {},
+        {
+          get() {
+            throw 'string exception';
+          },
+        }
+      );
+
+      const result = validateResume(throwingResume);
+      assert.strictEqual(result.valid, false);
+      assert.strictEqual(result.errors?.length, 1);
+      assert.strictEqual(result.errors![0], 'Schema validation setup failed: Unknown error');
+    });
+
+    it('handles Error thrown during asynchronous validation setup', async () => {
+      const throwingResume = new Proxy(
+        {},
+        {
+          get() {
+            throw new Error('Async setup or property access failed');
+          },
+        }
+      );
+
+      const result = await validateResumeAsync(throwingResume);
+      assert.strictEqual(result.valid, false);
+      assert.strictEqual(result.errors?.length, 1);
+      assert.strictEqual(result.errors![0], 'Schema validation setup failed: Async setup or property access failed');
+    });
+
+    it('handles non-Error thrown during asynchronous validation setup', async () => {
+      const throwingResume = new Proxy(
+        {},
+        {
+          get() {
+            throw 404;
+          },
+        }
+      );
+
+      const result = await validateResumeAsync(throwingResume);
+      assert.strictEqual(result.valid, false);
+      assert.strictEqual(result.errors?.length, 1);
+      assert.strictEqual(result.errors![0], 'Schema validation setup failed: Unknown error');
     });
   });
 
@@ -230,6 +388,30 @@ describe('validateResume', () => {
       const result = await validateResumeAsync(resume);
       assert.strictEqual(result.valid, false);
       assert.ok(result.errors && result.errors.length > 0);
+    });
+
+    it('validateResumeAsync returns valid: false for null input', async () => {
+      const result = await validateResumeAsync(null);
+      assert.strictEqual(result.valid, false);
+      assert.ok(Array.isArray(result.errors));
+    });
+
+    it('validateResumeAsync returns valid: false for undefined input', async () => {
+      const result = await validateResumeAsync(undefined);
+      assert.strictEqual(result.valid, false);
+      assert.ok(Array.isArray(result.errors));
+    });
+
+    it('validateResumeAsync returns valid: false for primitive types', async () => {
+      assert.strictEqual((await validateResumeAsync('string resume')).valid, false);
+      assert.strictEqual((await validateResumeAsync(12345)).valid, false);
+      assert.strictEqual((await validateResumeAsync(true)).valid, false);
+    });
+
+    it('validateResumeAsync returns valid: false for array input', async () => {
+      const result = await validateResumeAsync(['not', 'a', 'resume']);
+      assert.strictEqual(result.valid, false);
+      assert.ok(Array.isArray(result.errors));
     });
   });
 });
