@@ -82,6 +82,34 @@ describe('formatting', (): void => {
       assert.strictEqual(formatTenure('2019-03', '2022-04'), '3 yrs 1 mo');
     });
 
+    it('handles all singular and plural combinations of years and months correctly', (): void => {
+      // 0 yrs 1 mo
+      assert.strictEqual(formatTenure('2023-01', '2023-02'), '1 mo');
+      // 0 yrs 2 mo
+      assert.strictEqual(formatTenure('2023-01', '2023-03'), '2 mo');
+      // 1 yr 0 mo
+      assert.strictEqual(formatTenure('2022-01', '2023-01'), '1 yr');
+      // 2 yrs 0 mo
+      assert.strictEqual(formatTenure('2021-01', '2023-01'), '2 yrs');
+      // 1 yr 1 mo
+      assert.strictEqual(formatTenure('2022-01', '2023-02'), '1 yr 1 mo');
+      // 1 yr 2 mo
+      assert.strictEqual(formatTenure('2022-01', '2023-03'), '1 yr 2 mo');
+      // 2 yrs 1 mo
+      assert.strictEqual(formatTenure('2021-01', '2023-02'), '2 yrs 1 mo');
+      // 2 yrs 2 mo
+      assert.strictEqual(formatTenure('2021-01', '2023-03'), '2 yrs 2 mo');
+    });
+
+    it('handles mixed start and end date string formats', (): void => {
+      // YYYY start (defaults to month 1) with YYYY-MM end
+      assert.strictEqual(formatTenure('2020', '2021-06'), '1 yr 5 mo');
+      // YYYY-MM start with YYYY end (defaults to month 1)
+      assert.strictEqual(formatTenure('2020-03', '2022'), '1 yr 10 mo');
+      // YYYY-MM-DD start with YYYY-MM end
+      assert.strictEqual(formatTenure('2020-01-15', '2021-02'), '1 yr 1 mo');
+    });
+
     it('defaults end date to current date when end date is omitted or null/undefined', (): void => {
       const now = new Date();
       const year = now.getFullYear();
