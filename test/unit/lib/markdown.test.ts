@@ -92,12 +92,35 @@ describe('tokenizeMarkdown', (): void => {
     assert.deepStrictEqual(result, [{ type: 'text', text: '*not italic* and **not bold**' }]);
   });
 
+  it('handles complex link structures with query params and anchors', (): void => {
+    const result = tokenizeMarkdown('[Search Page](https://example.com/search?q=mcp&sort=desc#results)');
+    assert.deepStrictEqual(result, [{ type: 'link', text: 'Search Page', url: 'https://example.com/search?q=mcp&sort=desc#results' }]);
+  });
+
+  it('handles multiline inputs and line breaks', (): void => {
+    const result = tokenizeMarkdown('Line 1\nLine 2\n\nParagraph 2 with **bold**');
+    assert.deepStrictEqual(result, [
+      { type: 'text', text: 'Line 1\nLine 2' },
+      { type: 'text', text: 'Paragraph 2 with ' },
+      { type: 'bold', text: 'bold' },
+    ]);
+  });
+
   it('handles unicode and emoji in markdown formatting', (): void => {
     const result = tokenizeMarkdown('**🚀 Bold Emoji** and *_Italic Unicode: Ξ_*');
     assert.deepStrictEqual(result, [
       { type: 'bold', text: '🚀 Bold Emoji' },
       { type: 'text', text: ' and ' },
       { type: 'italic', text: 'Italic Unicode: Ξ' },
+    ]);
+  });
+
+  it('handles adjacent styled tokens and links', (): void => {
+    const result = tokenizeMarkdown('**Bold**_Italic_[Link](https://example.com)');
+    assert.deepStrictEqual(result, [
+      { type: 'bold', text: 'Bold' },
+      { type: 'italic', text: 'Italic' },
+      { type: 'link', text: 'Link', url: 'https://example.com' },
     ]);
   });
 
