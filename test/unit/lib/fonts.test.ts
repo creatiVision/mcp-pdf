@@ -715,6 +715,15 @@ describe('SSRF Protection in Font Downloading', (): void => {
       assert.strictEqual(fonts.isPrivateIP('::ffff:10.0.0.1'), true);
     });
 
+    it('identifies additional restricted IPv4 and IPv6 ranges', (): void => {
+      assert.strictEqual(fonts.isPrivateIP('192.0.0.1'), true);
+      assert.strictEqual(fonts.isPrivateIP('192.88.99.1'), true);
+      assert.strictEqual(fonts.isPrivateIP('198.18.0.1'), true);
+      assert.strictEqual(fonts.isPrivateIP('198.19.255.255'), true);
+      assert.strictEqual(fonts.isPrivateIP('2001:db8::1'), true);
+      assert.strictEqual(fonts.isPrivateIP('100::1'), true);
+    });
+
     it('identifies public IP addresses as non-private', (): void => {
       assert.strictEqual(fonts.isPrivateIP('8.8.8.8'), false);
       assert.strictEqual(fonts.isPrivateIP('1.1.1.1'), false);
@@ -755,6 +764,13 @@ describe('SSRF Protection in Font Downloading', (): void => {
       await assert.rejects(async () => await fonts.validateFontUrl('http://169.254.169.254/latest/meta-data'), /Access to private\/restricted IP address/);
 
       await assert.rejects(async () => await fonts.validateFontUrl('http://10.0.0.1/font.ttf'), /Access to private\/restricted IP address/);
+    });
+
+    it('returns resolvedAddresses attached to URL result', async (): Promise<void> => {
+      const parsed = await fonts.validateFontUrl('https://cdn.jsdelivr.net/npm/@fontsource/noto-sans@5.0.0/files/noto-sans-latin-400-normal.woff2');
+      assert.ok(Array.isArray(parsed.resolvedAddresses), 'resolvedAddresses should be an array');
+      assert.ok(parsed.resolvedAddresses.length > 0, 'resolvedAddresses should not be empty');
+      assert.ok(parsed.resolvedAddresses[0].address, 'should have address property');
     });
 
     it('allows valid public HTTP/HTTPS URLs', async (): Promise<void> => {

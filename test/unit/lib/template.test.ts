@@ -19,10 +19,35 @@ describe('template engine', (): void => {
       assert.strictEqual(result, 'Hello, !');
     });
 
+    it('renders falsy values correctly (0, false, empty string)', (): void => {
+      const result = render('Count: {{ count }}, Active: {{ active }}, Text: "{{ text }}"', {
+        count: 0,
+        active: false,
+        text: '',
+      });
+      assert.strictEqual(result, 'Count: 0, Active: false, Text: ""');
+    });
+
+    it('renders nested object properties and arrays', (): void => {
+      const result = render('{{ user.name }} ({{ user.skills[0] }})', {
+        user: { name: 'Alice', skills: ['TypeScript', 'Node'] },
+      });
+      assert.strictEqual(result, 'Alice (TypeScript)');
+    });
+
     it('returns template as-is when Liquid syntax error occurs', (): void => {
       const invalidTemplate = 'Hello, {{ name ';
       const result = render(invalidTemplate, { name: 'World' });
       assert.strictEqual(result, invalidTemplate);
+    });
+
+    it('returns template as-is when runtime error occurs during rendering', (): void => {
+      registerFilter('errFilter', () => {
+        throw new Error('Runtime filter exception');
+      });
+      const template = 'Hello {{ name | errFilter }}';
+      const result = render(template, { name: 'World' });
+      assert.strictEqual(result, template);
     });
   });
 
@@ -48,33 +73,50 @@ describe('template engine', (): void => {
       const result = templateFn({ name: 'Test' });
       assert.strictEqual(result, template);
     });
+
+    it('compiled function renders falsy values correctly', (): void => {
+      const templateFn = compile('Score: {{ score }}, Valid: {{ valid }}');
+      const result = templateFn({ score: 0, valid: false });
+      assert.strictEqual(result, 'Score: 0, Valid: false');
+    });
   });
 
   describe('built-in filters', (): void => {
     it('uppercase filter converts string to uppercase', (): void => {
       assert.strictEqual(render('{{ "hello" | uppercase }}', {}), 'HELLO');
       assert.strictEqual(render('{{ val | uppercase }}', { val: null }), '');
+      assert.strictEqual(render('{{ val | uppercase }}', { val: 123 }), '123');
+      assert.strictEqual(render('{{ val | uppercase }}', { val: true }), 'TRUE');
     });
 
     it('lowercase filter converts string to lowercase', (): void => {
       assert.strictEqual(render('{{ "HELLO" | lowercase }}', {}), 'hello');
       assert.strictEqual(render('{{ val | lowercase }}', { val: undefined }), '');
+      assert.strictEqual(render('{{ val | lowercase }}', { val: 456 }), '456');
+      assert.strictEqual(render('{{ val | lowercase }}', { val: false }), 'false');
     });
 
     it('capitalize filter capitalizes first letter', (): void => {
       assert.strictEqual(render('{{ "hello world" | capitalize }}', {}), 'Hello world');
       assert.strictEqual(render('{{ "" | capitalize }}', {}), '');
       assert.strictEqual(render('{{ val | capitalize }}', { val: null }), '');
+      assert.strictEqual(render('{{ val | capitalize }}', { val: 'a' }), 'A');
+      assert.strictEqual(render('{{ val | capitalize }}', { val: 123 }), '123');
     });
 
     it('trim filter trims whitespace', (): void => {
       assert.strictEqual(render('{{ "  hello  " | trim }}', {}), 'hello');
       assert.strictEqual(render('{{ val | trim }}', { val: null }), '');
+      assert.strictEqual(render('{{ val | trim }}', { val: '   ' }), '');
+      assert.strictEqual(render('{{ val | trim }}', { val: 100 }), '100');
     });
 
     it('join filter joins array with default and custom separators', (): void => {
       assert.strictEqual(render('{{ items | join }}', { items: ['apple', 'banana'] }), 'apple, banana');
       assert.strictEqual(render('{{ items | join: " - " }}', { items: ['apple', 'banana'] }), 'apple - banana');
+      assert.strictEqual(render('{{ items | join: "" }}', { items: ['a', 'b', 'c'] }), 'abc');
+      assert.strictEqual(render('{{ items | join: " | " }}', { items: [1, true, null, undefined, 'end'] }), '1 | true |  |  | end');
+      assert.strictEqual(render('{{ emptyList | join }}', { emptyList: [] }), '');
       assert.strictEqual(render('{{ nonArray | join }}', { nonArray: 'single' }), 'single');
       assert.strictEqual(render('{{ val | join }}', { val: null }), '');
     });
@@ -103,6 +145,33 @@ describe('template engine', (): void => {
       registerHelper('nullHelper', (_ctx, val, arg1) => `val=${val},arg1=${arg1 ?? ''}`);
       const result = render('{{ missing | nullHelper }}', {});
       assert.strictEqual(result, 'val=,arg1=');
+    });
+
+    it('registerHelper coerces non-string arguments and values to string', (): void => {
+      let capturedValue = '';
+      let capturedArg1 = '';
+      let capturedArg2 = '';
+
+      registerHelper('typeCoerceHelper', (_ctx, val, arg1, arg2) => {
+        capturedValue = val;
+        capturedArg1 = arg1;
+        capturedArg2 = arg2;
+        return `${val}-${arg1}-${arg2}`;
+      });
+
+      const result = render('{{ num | typeCoerceHelper: 42, true }}', { num: 100 });
+      assert.strictEqual(result, '100-42-true');
+      assert.strictEqual(typeof capturedValue, 'string');
+      assert.strictEqual(typeof capturedArg1, 'string');
+      assert.strictEqual(typeof capturedArg2, 'string');
+    });
+
+    it('registerHelper supports helper return values of different types (numbers, booleans)', (): void => {
+      registerHelper('lengthHelper', (_ctx, val) => val.length);
+      registerHelper('isAwesome', (_ctx, val) => val === 'awesome');
+
+      assert.strictEqual(render('{{ "test" | lengthHelper }}', {}), '4');
+      assert.strictEqual(render('{% if "awesome" | isAwesome %}Yes{% else %}No{% endif %}', {}), 'Yes');
     });
   });
 });
