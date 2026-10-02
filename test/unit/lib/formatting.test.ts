@@ -107,6 +107,17 @@ describe('formatting', (): void => {
     it('handles YYYY-MM-DD date format', (): void => {
       assert.strictEqual(formatTenure('2020-01-15', '2022-01-10'), '2 yrs');
     });
+
+    it('handles future start date when end date is omitted', (): void => {
+      const now = new Date();
+      const futureYear = now.getFullYear() + 5;
+      assert.strictEqual(formatTenure(`${futureYear}-01`, undefined), '');
+    });
+
+    it('handles mixed date format inputs', (): void => {
+      assert.strictEqual(formatTenure('2020', '2021-06'), '1 yr 5 mo');
+      assert.strictEqual(formatTenure('2020-01-15', '2021'), '1 yr');
+    });
   });
 
   describe('calculateTenure', (): void => {
