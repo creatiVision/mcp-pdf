@@ -20,5 +20,10 @@ describe('pdf-core', () => {
       const result = resolvePageSize(customSize);
       assert.deepStrictEqual(result, { width: 400, height: 600 });
     });
+
+    it('handles zero and floating point dimensions tuple', () => {
+      assert.deepStrictEqual(resolvePageSize([0, 0]), { width: 0, height: 0 });
+      assert.deepStrictEqual(resolvePageSize([100.5, 200.25]), { width: 100.5, height: 200.25 });
+    });
   });
 });
