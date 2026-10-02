@@ -579,7 +579,7 @@ export function renderStructuredContent(ctx: RenderContext, element: StructuredC
   const bulletMargin = element.spacing?.bulletMarginBottom ?? content.bulletMarginBottom;
   const lineGap = (content.lineHeight ?? 1.3) * content.fontSize - content.fontSize;
 
-  const summaries = Array.isArray(element.summary) ? element.summary : element.summary?.split(/\n\n+/).filter(Boolean) || [];
+  const summaries = paragraphsFromContent(element.summary);
   const hasSummary = summaries.length > 0;
   const hasBullets = element.bullets && element.bullets.length > 0;
 
