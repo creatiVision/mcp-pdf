@@ -130,10 +130,7 @@ export default function createTool() {
         }
       }
 
-      // Resolve effective margins
-      // Note: resume tool layout uses 'margins' inside 'styling' object, slightly different structure than pdf-document
-      // If styling.margins is provided, use it (and require it to be complete/valid Zod schema handles structure, we handle defaults)
-
+      // Resolve effective margins by merging user margins with defaults
       const defaultResumeMargins = getResumeDefaultMargins(pageSize as PageSizePreset);
       const userMargins = styling?.margins;
 
