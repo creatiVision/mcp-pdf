@@ -63,6 +63,53 @@ describe('tokenizeMarkdown', (): void => {
     const result = tokenizeMarkdown('[**Bold Link**](https://example.com)');
     assert.deepStrictEqual(result, [{ type: 'link', text: 'Bold Link', url: 'https://example.com' }]);
   });
+
+  it('handles link with italic and boldItalic nested styling', (): void => {
+    const resultItalic = tokenizeMarkdown('[*Italic Link*](https://example.com)');
+    assert.deepStrictEqual(resultItalic, [{ type: 'link', text: 'Italic Link', url: 'https://example.com' }]);
+
+    const resultBoldItalic = tokenizeMarkdown('[***Bold Italic Link***](https://example.com)');
+    assert.deepStrictEqual(resultBoldItalic, [{ type: 'link', text: 'Bold Italic Link', url: 'https://example.com' }]);
+  });
+
+  it('handles link with empty URL', (): void => {
+    const result = tokenizeMarkdown('[Link Text]()');
+    assert.deepStrictEqual(result, [{ type: 'link', text: 'Link Text', url: '' }]);
+  });
+
+  it('handles nested emphasis inside strong', (): void => {
+    const result = tokenizeMarkdown('**bold *and italic* inside**');
+    assert.deepStrictEqual(result, [{ type: 'boldItalic', text: 'bold and italic inside' }]);
+  });
+
+  it('handles nested strong inside emphasis', (): void => {
+    const result = tokenizeMarkdown('*italic **and bold** inside*');
+    assert.deepStrictEqual(result, [{ type: 'boldItalic', text: 'italic and bold inside' }]);
+  });
+
+  it('handles escaped markdown syntax characters', (): void => {
+    const result = tokenizeMarkdown('\\*not italic\\* and \\*\\*not bold\\*\\*');
+    assert.deepStrictEqual(result, [{ type: 'text', text: '*not italic* and **not bold**' }]);
+  });
+
+  it('handles unicode and emoji in markdown formatting', (): void => {
+    const result = tokenizeMarkdown('**🚀 Bold Emoji** and *_Italic Unicode: Ξ_*');
+    assert.deepStrictEqual(result, [
+      { type: 'bold', text: '🚀 Bold Emoji' },
+      { type: 'text', text: ' and ' },
+      { type: 'italic', text: 'Italic Unicode: Ξ' },
+    ]);
+  });
+
+  it('handles multiline markdown input', (): void => {
+    const result = tokenizeMarkdown('First line **bold**\nSecond line *italic*');
+    assert.deepStrictEqual(result, [
+      { type: 'text', text: 'First line ' },
+      { type: 'bold', text: 'bold' },
+      { type: 'text', text: '\nSecond line ' },
+      { type: 'italic', text: 'italic' },
+    ]);
+  });
 });
 
 describe('tokensToStyledSegments', (): void => {
