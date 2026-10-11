@@ -129,12 +129,16 @@ export default function createTool() {
 
       // Cache for resolved image dimensions within handler execution
       const imageDimensionCache = new Map<string, Promise<{ width: number; height: number }>>();
+      const resolvedImageDimensions = new Map<string, { width: number; height: number }>();
 
       function getCachedImageDimensions(imagePath: string, explicitWidth?: number, explicitHeight?: number): Promise<{ width: number; height: number }> {
-        const key = `${imagePath}:${explicitWidth ?? ''}:${explicitHeight ?? ''}`;
+        const key = `${imagePath}:${explicitWidth ?? ""}:${explicitHeight ?? ""}`;
         let promise = imageDimensionCache.get(key);
         if (!promise) {
-          promise = resolveImageDimensions(imagePath, explicitWidth, explicitHeight);
+          promise = resolveImageDimensions(imagePath, explicitWidth, explicitHeight).then((dims) => {
+            resolvedImageDimensions.set(key, dims);
+            return dims;
+          });
           imageDimensionCache.set(key, promise);
         }
         return promise;
@@ -144,9 +148,9 @@ export default function createTool() {
       async function preloadImages(items: ContentItem[]) {
         const promises: Promise<unknown>[] = [];
         function visit(item: ContentItem) {
-          if (item.type === 'image') {
+          if (item.type === "image") {
             promises.push(getCachedImageDimensions(item.imagePath, item.width as number | undefined, item.height as number | undefined));
-          } else if (item.type === 'group' && Array.isArray(item.children)) {
+          } else if (item.type === "group" && Array.isArray(item.children)) {
             for (const child of item.children) {
               visit(child as ContentItem);
             }
@@ -163,13 +167,13 @@ export default function createTool() {
         const promises: Promise<unknown>[] = [];
         function visitNode(node: LayoutNode) {
           const item = node.content as ContentItem;
-          if (item.type === 'group') {
+          if (item.type === "group") {
             if (node.children) {
               for (const child of node.children) {
                 visitNode(child);
               }
             }
-          } else if (item.type === 'image') {
+          } else if (item.type === "image") {
             promises.push(getCachedImageDimensions(item.imagePath, item.width as number | undefined, item.height as number | undefined));
           }
         }
@@ -214,7 +218,7 @@ export default function createTool() {
       };
 
       // Render a base content item at computed position
-      async function renderBaseItem(item: BaseContentItem, computedX?: number, computedY?: number, computedWidth?: number) {
+      function renderBaseItem(item: BaseContentItem, computedX?: number, computedY?: number, computedWidth?: number) {
         switch (item.type) {
           case 'text': {
             const fontSize = item.fontSize ?? DEFAULT_TEXT_FONT_SIZE;
@@ -256,8 +260,11 @@ export default function createTool() {
             break;
           }
           case 'image': {
-            const dimensions = await getCachedImageDimensions(item.imagePath, item.width as number | undefined, item.height as number | undefined);
-            const opts = { width: dimensions.width, height: dimensions.height };
+            const cacheKey = `${item.imagePath}:${item.width ?? ""}:${item.height ?? ""}`;
+            const dimensions = resolvedImageDimensions.get(cacheKey);
+            const width = dimensions?.width ?? item.width;
+            const height = dimensions?.height ?? item.height;
+            const opts = width !== undefined && height !== undefined ? { width, height } : undefined;
 
             const imgX = computedX ?? item.left;
             const imgY = computedY ?? item.top;
@@ -329,7 +336,7 @@ export default function createTool() {
       }
 
       // Render a layout node tree
-      async function renderLayoutNode(node: LayoutNode) {
+      function renderLayoutNode(node: LayoutNode) {
         const item = node.content as ContentItem;
 
         if (item.type === 'group') {
@@ -338,11 +345,11 @@ export default function createTool() {
 
           if (node.children) {
             for (const childNode of node.children) {
-              await renderLayoutNode(childNode);
+              renderLayoutNode(childNode);
             }
           }
         } else {
-          await renderBaseItem(item as BaseContentItem, node.x, node.y, node.width);
+          renderBaseItem(item as BaseContentItem, node.x, node.y, node.width);
         }
       }
 
@@ -430,7 +437,7 @@ export default function createTool() {
 
         // Render items for this page
         for (const node of layoutNodes) {
-          await renderLayoutNode(node);
+          renderLayoutNode(node);
         }
       }
 
