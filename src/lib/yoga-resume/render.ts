@@ -5,12 +5,11 @@
  * at exact x, y coordinates. No advanceY() - all positions are pre-computed.
  */
 
-import type PDFKit from 'pdfkit';
 import { ensureString, paragraphsFromContent, renderField } from '../formatting.ts';
-import type { CompanyHeaderElement, CredentialData, CredentialListElement, DividerElement, EntryData, EntryHeaderElement, FieldTemplates, GroupElement, HeaderElement, KeywordListElement, LanguageListElement, ReferenceListElement, SectionTitleElement, StructuredContentElement, TextElement } from '../ir/types.ts';
+import type { CompanyHeaderElement, CredentialData, CredentialListElement, DividerElement, EntryData, EntryHeaderElement, GroupElement, HeaderElement, KeywordListElement, LanguageListElement, ReferenceListElement, SectionTitleElement, StructuredContentElement, TextElement } from '../ir/types.ts';
 import { measureMarkdownTextHeight, renderText } from '../pdf-helpers.ts';
-import { getResolvedStyle, type TypographyOptions } from '../types/typography.ts';
-import { type ComputedPosition, calculateEntryColumnWidths, type Page, type PageNode, type RenderContext } from './types.ts';
+import { getResolvedStyle } from '../types/typography.ts';
+import { type ComputedPosition, type CreateRenderContextOptions, calculateEntryColumnWidths, type Page, type PageNode, type RenderContext } from './types.ts';
 
 // =============================================================================
 // Helper Functions
@@ -599,7 +598,7 @@ export function renderStructuredContent(ctx: RenderContext, element: StructuredC
 
     // Calculate the height of the rendered text and advance
     // Use measureMarkdownTextHeight to account for bold text width (same as rendering)
-    const summaryHeight = measureMarkdownTextHeight(doc, summary, position.width, content.fontSize, lineGap, fonts, ctx.parseMarkdown);
+    const summaryHeight = measureMarkdownTextHeight(doc, summary, { width: position.width, fontSize: content.fontSize, lineGap, fonts, parseMarkdown: ctx.parseMarkdown });
     currentY += summaryHeight + paragraphMargin;
   }
 
@@ -624,7 +623,7 @@ export function renderStructuredContent(ctx: RenderContext, element: StructuredC
 
       // Calculate the height of the bullet text and advance
       // Use measureMarkdownTextHeight to account for bold text width (same as rendering)
-      const bulletHeight = measureMarkdownTextHeight(doc, bulletText, bulletWidth, content.fontSize, lineGap, fonts, ctx.parseMarkdown);
+      const bulletHeight = measureMarkdownTextHeight(doc, bulletText, { width: bulletWidth, fontSize: content.fontSize, lineGap, fonts, parseMarkdown: ctx.parseMarkdown });
       currentY += bulletHeight + bulletMargin;
     }
   }
@@ -722,7 +721,8 @@ export function renderPage(ctx: RenderContext, page: Page): void {
 /**
  * Create a render context.
  */
-export function createRenderContext(doc: PDFKit.PDFDocument, typography: TypographyOptions, fieldTemplates: Required<FieldTemplates>, emojiAvailable: boolean, parseMarkdown: boolean, hyperlinkColor: string): RenderContext {
+export function createRenderContext(options: CreateRenderContextOptions): RenderContext {
+  const { doc, typography, fieldTemplates, emojiAvailable, parseMarkdown, hyperlinkColor } = options;
   return {
     doc,
     typography,

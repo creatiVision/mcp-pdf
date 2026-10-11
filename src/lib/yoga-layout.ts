@@ -340,13 +340,12 @@ async function buildYogaTree(content: LayoutContent, parentWidth: number, measur
     const thisDirection = content.direction || 'column';
     const gap = content.gap ?? 0;
 
-    for (let i = 0; i < content.children.length; i++) {
-      const childContent = content.children[i];
-      if (!childContent) continue;
+    const childPromises = content.children.map(async (childContent, i) => {
+      if (!childContent) return null;
 
       // For row containers with flex children, estimate width for accurate height measurement
       let effectiveChildWidth = childParentWidth;
-      if (thisDirection === 'row' && childContent.flex !== undefined) {
+      if (thisDirection === 'row' && childContent.flex !== undefined && content.children) {
         effectiveChildWidth = estimateFlexChildWidth(content.children, i, childParentWidth, gap);
       }
 
@@ -356,10 +355,20 @@ async function buildYogaTree(content: LayoutContent, parentWidth: number, measur
       if (childContent.position === 'absolute') {
         // Calculate layout independently for absolute children
         childTree.node.calculateLayout(typeof childContent.width === 'number' ? childContent.width : childParentWidth, undefined, Yoga.DIRECTION_LTR);
-        absoluteChildren.push(childTree);
+        return { type: 'absolute' as const, tree: childTree };
+      }
+      return { type: 'flex' as const, tree: childTree };
+    });
+
+    const childResults = await Promise.all(childPromises);
+
+    for (const result of childResults) {
+      if (!result) continue;
+      if (result.type === 'absolute') {
+        absoluteChildren.push(result.tree);
       } else {
-        node.insertChild(childTree.node, flexIndex++);
-        children.push(childTree);
+        node.insertChild(result.tree.node, flexIndex++);
+        children.push(result.tree);
       }
     }
 
@@ -489,18 +498,24 @@ export async function calculateLayout(content: LayoutContent[], pageWidth: numbe
   const trees: (YogaTreeNode & { _absolute?: boolean })[] = [];
 
   // Build Yoga tree for each content item
-  for (const item of content) {
-    // If item has position='absolute', don't add to flex layout
+  const itemPromises = content.map(async (item) => {
     if (item.position === 'absolute') {
       // Create a detached node just for measurement if needed
       const tree = await buildYogaTree(item, availableWidth, measureHeight, measureWidth);
       tree.node.calculateLayout(typeof item.width === 'number' ? item.width : availableWidth, undefined, Direction.LTR);
-      trees.push({ ...tree, _absolute: true });
-      continue;
+      return { tree: { ...tree, _absolute: true }, isAbsolute: true };
     }
 
     const tree = await buildYogaTree(item, availableWidth, measureHeight, measureWidth);
-    root.insertChild(tree.node, root.getChildCount());
+    return { tree, isAbsolute: false };
+  });
+
+  const itemResults = await Promise.all(itemPromises);
+
+  for (const { tree, isAbsolute } of itemResults) {
+    if (!isAbsolute) {
+      root.insertChild(tree.node, root.getChildCount());
+    }
     trees.push(tree);
   }
 

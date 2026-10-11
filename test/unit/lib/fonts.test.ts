@@ -101,16 +101,36 @@ describe('fonts.hasEmoji', (): void => {
 });
 
 describe('fonts.needsUnicodeFont', (): void => {
-  it('returns false for ASCII-only text', (): void => {
+  it('returns false for ASCII-only text and ASCII boundary values', (): void => {
     assert.strictEqual(fonts.needsUnicodeFont('Hello World'), false);
     assert.strictEqual(fonts.needsUnicodeFont('Test 123'), false);
     assert.strictEqual(fonts.needsUnicodeFont(''), false);
+    assert.strictEqual(fonts.needsUnicodeFont('\x00'), false, 'NULL character (U+0000)');
+    assert.strictEqual(fonts.needsUnicodeFont('\x7F'), false, 'DEL character (U+007F)');
+    assert.strictEqual(fonts.needsUnicodeFont('\n\r\t'), false, 'Control characters\n, \r, \t');
   });
 
-  it('returns false for Latin-1 characters', (): void => {
+  it('returns false for Latin-1 characters and boundary values', (): void => {
     assert.strictEqual(fonts.needsUnicodeFont('Café'), false);
     assert.strictEqual(fonts.needsUnicodeFont('résumé'), false);
     assert.strictEqual(fonts.needsUnicodeFont('naïve'), false);
+    assert.strictEqual(fonts.needsUnicodeFont('\x80'), false, 'Latin-1 lower boundary (U+0080)');
+    assert.strictEqual(fonts.needsUnicodeFont('\xFF'), false, 'Latin-1 upper boundary ÿ (U+00FF)');
+    assert.strictEqual(fonts.needsUnicodeFont('©'), false, 'Copyright symbol (U+00A9)');
+    assert.strictEqual(fonts.needsUnicodeFont('®'), false, 'Registered trademark symbol (U+00AE)');
+  });
+
+  it('returns true for characters beyond Latin-1 boundaries and non-BMP / astral plane characters', (): void => {
+    assert.strictEqual(fonts.needsUnicodeFont('\u0100'), true, 'Latin Extended-A lower boundary Ā (U+0100)');
+    assert.strictEqual(fonts.needsUnicodeFont('\uFFFF'), true, 'BMP upper boundary (U+FFFF)');
+    assert.strictEqual(fonts.needsUnicodeFont('🚀'), true, 'Non-BMP surrogate pair character (U+1F680)');
+    assert.strictEqual(fonts.needsUnicodeFont('𠮷'), true, 'CJK extension B character (U+20BB7)');
+  });
+
+  it('returns true for additional non-Latin scripts', (): void => {
+    assert.strictEqual(fonts.needsUnicodeFont('שלום'), true, 'Hebrew script');
+    assert.strictEqual(fonts.needsUnicodeFont('สวัสดี'), true, 'Thai script');
+    assert.strictEqual(fonts.needsUnicodeFont('नमस्ते'), true, 'Devanagari script');
   });
 
   it('returns true for emoji', (): void => {
