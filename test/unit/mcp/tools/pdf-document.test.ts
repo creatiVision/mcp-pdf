@@ -85,7 +85,8 @@ describe('pdf-document tool', () => {
       assert.ok(error instanceof ProtocolError, 'Error should be an instance of ProtocolError');
       assert.strictEqual((error as ProtocolError).code, ProtocolErrorCode.InternalError, 'ErrorCode should be InternalError');
       assert.ok(error.message.includes('Error creating PDF document:'), `Expected 'Error creating PDF document:' in message, got: ${error.message}`);
-      assert.ok(error.data?.stack !== undefined, 'Should include stack in error data');
+      const data = error.data as { stack?: string } | undefined;
+      assert.ok(data?.stack !== undefined, 'Should include stack in error data');
     }
   });
 
