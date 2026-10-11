@@ -7,6 +7,7 @@ describe('Version and Help handler', () => {
     assert.strictEqual(typeof pkg.name, 'string');
     assert.strictEqual(typeof pkg.version, 'string');
     assert.ok(pkg.name.length > 0);
+    assert.strictEqual(readPkg(), pkg);
   });
 
   it('handles --version flag', () => {
