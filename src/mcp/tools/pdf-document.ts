@@ -160,6 +160,19 @@ export default function createTool() {
       // Get content width (page width minus margins)
       const contentWidth = doc.page.width - doc.page.margins.left - doc.page.margins.right;
 
+      // Pre-resolve image dimensions concurrently for performance
+      const imageItems = content.filter((item): item is Extract<(typeof content)[number], { type: 'image' }> => item.type === 'image');
+      const resolvedDimensionsList = await Promise.all(
+        imageItems.map((item) =>
+          resolveImageDimensions(
+            item.imagePath,
+            item.width ?? contentWidth, // Default to content width
+            item.height
+          )
+        )
+      );
+      const imageDimensionsMap = new Map(imageItems.map((item, index) => [item, resolvedDimensionsList[index]]));
+
       // Render flowing content
       for (const item of content) {
         switch (item.type) {
@@ -208,11 +221,7 @@ export default function createTool() {
           }
 
           case 'image': {
-            const dimensions = await resolveImageDimensions(
-              item.imagePath,
-              item.width ?? contentWidth, // Default to content width
-              item.height
-            );
+            const dimensions = imageDimensionsMap.get(item) ?? (await resolveImageDimensions(item.imagePath, item.width ?? contentWidth, item.height));
 
             // Ensure image doesn't exceed content width
             const imgWidth = Math.min(dimensions.width, contentWidth);
