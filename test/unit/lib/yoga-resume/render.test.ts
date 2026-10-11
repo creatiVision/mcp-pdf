@@ -8,8 +8,12 @@ describe('yoga-resume/render', () => {
   const fieldTemplates: Required<FieldTemplates> = {
     location: '{location}',
     dateRange: '{startDate} - {endDate}',
-    companyHeader: '{company}',
-    credentialHeader: '{name}',
+    degree: '{degree}',
+    contactLine: '{contactLine}',
+    credential: '{credential}',
+    language: '{language}',
+    skill: '{skill}',
+    url: '{url}',
   };
 
   describe('createRenderContext', () => {

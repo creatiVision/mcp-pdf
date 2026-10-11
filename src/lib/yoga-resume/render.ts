@@ -5,12 +5,11 @@
  * at exact x, y coordinates. No advanceY() - all positions are pre-computed.
  */
 
-import type PDFKit from 'pdfkit';
 import { ensureString, paragraphsFromContent, renderField } from '../formatting.ts';
-import type { CompanyHeaderElement, CredentialData, CredentialListElement, DividerElement, EntryData, EntryHeaderElement, FieldTemplates, GroupElement, HeaderElement, KeywordListElement, LanguageListElement, ReferenceListElement, SectionTitleElement, StructuredContentElement, TextElement } from '../ir/types.ts';
+import type { CompanyHeaderElement, CredentialData, CredentialListElement, DividerElement, EntryData, EntryHeaderElement, GroupElement, HeaderElement, KeywordListElement, LanguageListElement, ReferenceListElement, SectionTitleElement, StructuredContentElement, TextElement } from '../ir/types.ts';
 import { measureMarkdownTextHeight, renderText } from '../pdf-helpers.ts';
-import { getResolvedStyle, type TypographyOptions } from '../types/typography.ts';
-import { type ComputedPosition, calculateEntryColumnWidths, type CreateRenderContextOptions, type Page, type PageNode, type RenderContext } from './types.ts';
+import { getResolvedStyle } from '../types/typography.ts';
+import { type ComputedPosition, type CreateRenderContextOptions, calculateEntryColumnWidths, type Page, type PageNode, type RenderContext } from './types.ts';
 
 // =============================================================================
 // Helper Functions
