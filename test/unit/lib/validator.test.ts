@@ -308,7 +308,7 @@ describe('validateResume', () => {
       const result = validateResume(throwingResume);
       assert.strictEqual(result.valid, false);
       assert.strictEqual(result.errors?.length, 1);
-      assert.strictEqual(result.errors![0], 'Schema validation setup failed: Sync setup or property access failed');
+      assert.strictEqual(result.errors?.[0], 'Schema validation setup failed: Sync setup or property access failed');
     });
 
     it('handles non-Error thrown during synchronous validation setup', () => {
@@ -324,7 +324,7 @@ describe('validateResume', () => {
       const result = validateResume(throwingResume);
       assert.strictEqual(result.valid, false);
       assert.strictEqual(result.errors?.length, 1);
-      assert.strictEqual(result.errors![0], 'Schema validation setup failed: Unknown error');
+      assert.strictEqual(result.errors?.[0], 'Schema validation setup failed: Unknown error');
     });
 
     it('handles Error thrown during asynchronous validation setup', async () => {
@@ -340,7 +340,7 @@ describe('validateResume', () => {
       const result = await validateResumeAsync(throwingResume);
       assert.strictEqual(result.valid, false);
       assert.strictEqual(result.errors?.length, 1);
-      assert.strictEqual(result.errors![0], 'Schema validation setup failed: Async setup or property access failed');
+      assert.strictEqual(result.errors?.[0], 'Schema validation setup failed: Async setup or property access failed');
     });
 
     it('handles non-Error thrown during asynchronous validation setup', async () => {
@@ -356,7 +356,7 @@ describe('validateResume', () => {
       const result = await validateResumeAsync(throwingResume);
       assert.strictEqual(result.valid, false);
       assert.strictEqual(result.errors?.length, 1);
-      assert.strictEqual(result.errors![0], 'Schema validation setup failed: Unknown error');
+      assert.strictEqual(result.errors?.[0], 'Schema validation setup failed: Unknown error');
     });
   });
 
