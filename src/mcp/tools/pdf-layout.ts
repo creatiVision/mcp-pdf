@@ -127,6 +127,19 @@ export default function createTool() {
         left: doc.page.margins.left,
       };
 
+      // Cache for resolved image dimensions to avoid redundant disk/async calls during layout & rendering
+      const imageDimensionsCache = new Map<string, { width: number; height: number }>();
+
+      async function getCachedImageDimensions(imagePath: string, explicitWidth?: number, explicitHeight?: number) {
+        const cacheKey = `${imagePath}:${explicitWidth ?? ''}:${explicitHeight ?? ''}`;
+        let dims = imageDimensionsCache.get(cacheKey);
+        if (!dims) {
+          dims = await resolveImageDimensions(imagePath, explicitWidth, explicitHeight);
+          imageDimensionsCache.set(cacheKey, dims);
+        }
+        return dims;
+      }
+
       // Height measurer for Yoga layout
       const measureHeight = async (item: LayoutContent, availableWidth: number): Promise<number> => {
         if (item.type === 'text' || item.type === 'heading') {
@@ -146,7 +159,7 @@ export default function createTool() {
           return height;
         }
         if (item.type === 'image') {
-          const dimensions = await resolveImageDimensions(item.imagePath as string, item.width as number | undefined, item.height as number | undefined);
+          const dimensions = await getCachedImageDimensions(item.imagePath as string, item.width as number | undefined, item.height as number | undefined);
           return dimensions.height;
         }
         if (item.type === 'rect') {
@@ -162,7 +175,7 @@ export default function createTool() {
       };
 
       // Render a base content item at computed position
-      async function renderBaseItem(item: BaseContentItem, computedX?: number, computedY?: number, computedWidth?: number) {
+      function renderBaseItem(item: BaseContentItem, computedX?: number, computedY?: number, computedWidth?: number) {
         switch (item.type) {
           case 'text': {
             const fontSize = item.fontSize ?? DEFAULT_TEXT_FONT_SIZE;
@@ -204,8 +217,11 @@ export default function createTool() {
             break;
           }
           case 'image': {
-            const dimensions = await resolveImageDimensions(item.imagePath, item.width as number | undefined, item.height as number | undefined);
-            const opts = { width: dimensions.width, height: dimensions.height };
+            const cacheKey = `${item.imagePath}:${item.width ?? ''}:${item.height ?? ''}`;
+            const dimensions = imageDimensionsCache.get(cacheKey);
+            const width = dimensions?.width ?? item.width;
+            const height = dimensions?.height ?? item.height;
+            const opts = width !== undefined && height !== undefined ? { width, height } : undefined;
 
             const imgX = computedX ?? item.left;
             const imgY = computedY ?? item.top;
@@ -277,7 +293,7 @@ export default function createTool() {
       }
 
       // Render a layout node tree
-      async function renderLayoutNode(node: LayoutNode) {
+      function renderLayoutNode(node: LayoutNode) {
         const item = node.content as ContentItem;
 
         if (item.type === 'group') {
@@ -286,11 +302,11 @@ export default function createTool() {
 
           if (node.children) {
             for (const childNode of node.children) {
-              await renderLayoutNode(childNode);
+              renderLayoutNode(childNode);
             }
           }
         } else {
-          await renderBaseItem(item as BaseContentItem, node.x, node.y, node.width);
+          renderBaseItem(item as BaseContentItem, node.x, node.y, node.width);
         }
       }
 
@@ -372,7 +388,7 @@ export default function createTool() {
 
         // Render items for this page
         for (const node of layoutNodes) {
-          await renderLayoutNode(node);
+          renderLayoutNode(node);
         }
       }
 
