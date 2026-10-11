@@ -102,35 +102,36 @@ export default function createTool() {
       }
 
       const pdfBasename = basename(pdfPath, '.pdf');
-      const images: z.infer<typeof imageResultSchema>[] = [];
 
-      for (const pngPage of pngPages) {
-        const pngBuffer = pngPage.content;
-        const pageNum = pngPage.pageNumber;
-        if (!pngBuffer) throw new ProtocolError(ProtocolErrorCode.InternalError, `Failed to render page ${pageNum}.`);
+      const images = await Promise.all(
+        pngPages.map(async (pngPage) => {
+          const pngBuffer = pngPage.content;
+          const pageNum = pngPage.pageNumber;
+          if (!pngBuffer) throw new ProtocolError(ProtocolErrorCode.InternalError, `Failed to render page ${pageNum}.`);
 
-        // Generate output filename
-        const outputFilename = `${pdfBasename}-p${pageNum}.png`;
+          // Generate output filename
+          const outputFilename = `${pdfBasename}-p${pageNum}.png`;
 
-        // Write to storage
-        const { storedName } = await writeFile(pngBuffer, outputFilename, { resourceStoreUri });
+          // Write to storage
+          const { storedName } = await writeFile(pngBuffer, outputFilename, { resourceStoreUri });
 
-        // Generate URI
-        const uri = getFileUri(storedName, transport, {
-          resourceStoreUri,
-          ...(baseUrl && { baseUrl }),
-          endpoint: '/files',
-        });
+          // Generate URI
+          const uri = getFileUri(storedName, transport, {
+            resourceStoreUri,
+            ...(baseUrl && { baseUrl }),
+            endpoint: '/files',
+          });
 
-        images.push({
-          imagePath: storedName,
-          uri,
-          width: pngPage.width,
-          height: pngPage.height,
-          pageNumber: pageNum,
-          fileSizeBytes: pngBuffer.length,
-        });
-      }
+          return {
+            imagePath: storedName,
+            uri,
+            width: pngPage.width,
+            height: pngPage.height,
+            pageNumber: pageNum,
+            fileSizeBytes: pngBuffer.length,
+          };
+        })
+      );
 
       const result: Output = {
         images,
