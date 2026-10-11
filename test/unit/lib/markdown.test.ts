@@ -1,193 +1,55 @@
 import assert from 'assert';
-import { type Token, tokenizeMarkdown, tokensToStyledSegments } from '../../../src/lib/markdown.ts';
+import { escapeMarkdown, tokenizeMarkdown, tokensToStyledSegments } from '../../../src/lib/markdown.ts';
 
-describe('tokenizeMarkdown', (): void => {
-  it('returns empty array for empty string', (): void => {
-    const result = tokenizeMarkdown('');
-    assert.deepStrictEqual(result, []);
-  });
+function segments(text: string): Array<[string, string]> {
+  return tokensToStyledSegments(tokenizeMarkdown(text)).map((s) => [s.content, s.type === 'link' ? `link:${s.url}` : s.bold && s.italic ? 'bold+italic' : s.bold ? 'bold' : s.italic ? 'italic' : 'plain']);
+}
 
-  it('tokenizes plain text', (): void => {
-    const result = tokenizeMarkdown('Hello World');
-    assert.deepStrictEqual(result, [{ type: 'text', text: 'Hello World' }]);
-  });
+function plain(text: string): string {
+  return tokensToStyledSegments(tokenizeMarkdown(text))
+    .map((s) => s.content)
+    .join('');
+}
 
-  it('tokenizes bold text using **', (): void => {
-    const result = tokenizeMarkdown('**bold text**');
-    assert.deepStrictEqual(result, [{ type: 'bold', text: 'bold text' }]);
-  });
-
-  it('tokenizes bold text using __', (): void => {
-    const result = tokenizeMarkdown('__bold text__');
-    assert.deepStrictEqual(result, [{ type: 'bold', text: 'bold text' }]);
-  });
-
-  it('tokenizes italic text using *', (): void => {
-    const result = tokenizeMarkdown('*italic text*');
-    assert.deepStrictEqual(result, [{ type: 'italic', text: 'italic text' }]);
-  });
-
-  it('tokenizes italic text using _', (): void => {
-    const result = tokenizeMarkdown('_italic text_');
-    assert.deepStrictEqual(result, [{ type: 'italic', text: 'italic text' }]);
-  });
-
-  it('tokenizes bold+italic text using ***', (): void => {
-    const result = tokenizeMarkdown('***bold and italic***');
-    assert.deepStrictEqual(result, [{ type: 'boldItalic', text: 'bold and italic' }]);
-  });
-
-  it('tokenizes bold+italic text using ___', (): void => {
-    const result = tokenizeMarkdown('___bold and italic___');
-    assert.deepStrictEqual(result, [{ type: 'boldItalic', text: 'bold and italic' }]);
-  });
-
-  it('tokenizes links', (): void => {
-    const result = tokenizeMarkdown('[Example](https://example.com)');
-    assert.deepStrictEqual(result, [{ type: 'link', text: 'Example', url: 'https://example.com' }]);
-  });
-
-  it('tokenizes mixed markdown with text, bold, italic, and links', (): void => {
-    const result = tokenizeMarkdown('Normal **bold** and *italic* plus [a link](https://example.com)');
-    assert.deepStrictEqual(result, [
-      { type: 'text', text: 'Normal ' },
-      { type: 'bold', text: 'bold' },
-      { type: 'text', text: ' and ' },
-      { type: 'italic', text: 'italic' },
-      { type: 'text', text: ' plus ' },
-      { type: 'link', text: 'a link', url: 'https://example.com' },
+describe('tokenizeMarkdown', () => {
+  it('parses bold, italic, bold italic and links', () => {
+    assert.deepStrictEqual(segments('a **b** *c* ***d*** [e](https://x.y)'), [
+      ['a ', 'plain'],
+      ['b', 'bold'],
+      [' ', 'plain'],
+      ['c', 'italic'],
+      [' ', 'plain'],
+      ['d', 'bold+italic'],
+      [' ', 'plain'],
+      ['e', 'link:https://x.y'],
     ]);
   });
 
-  it('handles link with nested styling', (): void => {
-    const result = tokenizeMarkdown('[**Bold Link**](https://example.com)');
-    assert.deepStrictEqual(result, [{ type: 'link', text: 'Bold Link', url: 'https://example.com' }]);
+  it('keeps line-start text that block markdown would turn into lists, headings and quotes', () => {
+    for (const text of ['1. Led the team', '- Shipped it', '* Shipped it', '# C# expert', '> quoted', '---']) {
+      assert.strictEqual(plain(text), text);
+    }
   });
 
-  it('handles link with italic and boldItalic nested styling', (): void => {
-    const resultItalic = tokenizeMarkdown('[*Italic Link*](https://example.com)');
-    assert.deepStrictEqual(resultItalic, [{ type: 'link', text: 'Italic Link', url: 'https://example.com' }]);
-
-    const resultBoldItalic = tokenizeMarkdown('[***Bold Italic Link***](https://example.com)');
-    assert.deepStrictEqual(resultBoldItalic, [{ type: 'link', text: 'Bold Italic Link', url: 'https://example.com' }]);
+  it('keeps angle-bracket text and inline code', () => {
+    assert.strictEqual(plain('Worked with <React> and <b>tags</b>'), 'Worked with <React> and <b>tags</b>');
+    assert.strictEqual(plain('Run `npm test` daily'), 'Run npm test daily');
   });
 
-  it('handles link with empty URL', (): void => {
-    const result = tokenizeMarkdown('[Link Text]()');
-    assert.deepStrictEqual(result, [{ type: 'link', text: 'Link Text', url: '' }]);
+  it('keeps line breaks and paragraphs', () => {
+    assert.strictEqual(plain('line one\nline two'), 'line one\nline two');
+    assert.strictEqual(plain('para one\n\npara **two**'), 'para one\n\npara two');
   });
 
-  it('handles nested emphasis inside strong', (): void => {
-    const result = tokenizeMarkdown('**bold *and italic* inside**');
-    assert.deepStrictEqual(result, [{ type: 'boldItalic', text: 'bold and italic inside' }]);
-  });
-
-  it('handles nested strong inside emphasis', (): void => {
-    const result = tokenizeMarkdown('*italic **and bold** inside*');
-    assert.deepStrictEqual(result, [{ type: 'boldItalic', text: 'italic and bold inside' }]);
-  });
-
-  it('handles escaped markdown syntax characters', (): void => {
-    const result = tokenizeMarkdown('\\*not italic\\* and \\*\\*not bold\\*\\*');
-    assert.deepStrictEqual(result, [{ type: 'text', text: '*not italic* and **not bold**' }]);
-  });
-
-  it('handles complex link structures with query params and anchors', (): void => {
-    const result = tokenizeMarkdown('[Search Page](https://example.com/search?q=mcp&sort=desc#results)');
-    assert.deepStrictEqual(result, [{ type: 'link', text: 'Search Page', url: 'https://example.com/search?q=mcp&sort=desc#results' }]);
-  });
-
-  it('handles multiline inputs and line breaks', (): void => {
-    const result = tokenizeMarkdown('Line 1\nLine 2\n\nParagraph 2 with **bold**');
-    assert.deepStrictEqual(result, [
-      { type: 'text', text: 'Line 1\nLine 2' },
-      { type: 'text', text: 'Paragraph 2 with ' },
-      { type: 'bold', text: 'bold' },
-    ]);
-  });
-
-  it('handles unicode and emoji in markdown formatting', (): void => {
-    const result = tokenizeMarkdown('**🚀 Bold Emoji** and *_Italic Unicode: Ξ_*');
-    assert.deepStrictEqual(result, [
-      { type: 'bold', text: '🚀 Bold Emoji' },
-      { type: 'text', text: ' and ' },
-      { type: 'italic', text: 'Italic Unicode: Ξ' },
-    ]);
-  });
-
-  it('handles adjacent styled tokens and links', (): void => {
-    const result = tokenizeMarkdown('**Bold**_Italic_[Link](https://example.com)');
-    assert.deepStrictEqual(result, [
-      { type: 'bold', text: 'Bold' },
-      { type: 'italic', text: 'Italic' },
-      { type: 'link', text: 'Link', url: 'https://example.com' },
-    ]);
-  });
-
-  it('handles multiline markdown input', (): void => {
-    const result = tokenizeMarkdown('First line **bold**\nSecond line *italic*');
-    assert.deepStrictEqual(result, [
-      { type: 'text', text: 'First line ' },
-      { type: 'bold', text: 'bold' },
-      { type: 'text', text: '\nSecond line ' },
-      { type: 'italic', text: 'italic' },
-    ]);
+  it('applies backslash escapes', () => {
+    assert.strictEqual(plain('\\*nix and 5 \\* 3'), '*nix and 5 * 3');
   });
 });
 
-describe('tokensToStyledSegments', (): void => {
-  it('returns empty array for empty tokens input', (): void => {
-    const result = tokensToStyledSegments([]);
-    assert.deepStrictEqual(result, []);
-  });
-
-  it('converts plain text tokens to styled segments', (): void => {
-    const tokens: Token[] = [{ type: 'text', text: 'Hello' }];
-    const result = tokensToStyledSegments(tokens);
-    assert.deepStrictEqual(result, [{ type: 'text', content: 'Hello', bold: false, italic: false, url: undefined }]);
-  });
-
-  it('converts bold tokens to styled segments', (): void => {
-    const tokens: Token[] = [{ type: 'bold', text: 'Bold Text' }];
-    const result = tokensToStyledSegments(tokens);
-    assert.deepStrictEqual(result, [{ type: 'text', content: 'Bold Text', bold: true, italic: false, url: undefined }]);
-  });
-
-  it('converts italic tokens to styled segments', (): void => {
-    const tokens: Token[] = [{ type: 'italic', text: 'Italic Text' }];
-    assert.deepStrictEqual(tokensToStyledSegments(tokens), [{ type: 'text', content: 'Italic Text', bold: false, italic: true, url: undefined }]);
-  });
-
-  it('converts boldItalic tokens to styled segments', (): void => {
-    const tokens: Token[] = [{ type: 'boldItalic', text: 'Bold Italic Text' }];
-    assert.deepStrictEqual(tokensToStyledSegments(tokens), [{ type: 'text', content: 'Bold Italic Text', bold: true, italic: true, url: undefined }]);
-  });
-
-  it('converts link tokens to styled segments', (): void => {
-    const tokens: Token[] = [{ type: 'link', text: 'Link Text', url: 'https://example.com' }];
-    assert.deepStrictEqual(tokensToStyledSegments(tokens), [{ type: 'link', content: 'Link Text', bold: false, italic: false, url: 'https://example.com' }]);
-  });
-
-  it('converts mixed tokens array correctly', (): void => {
-    const tokens: Token[] = [
-      { type: 'text', text: 'Text ' },
-      { type: 'bold', text: 'Bold' },
-      { type: 'text', text: ' ' },
-      { type: 'italic', text: 'Italic' },
-      { type: 'text', text: ' ' },
-      { type: 'boldItalic', text: 'BoldItalic' },
-      { type: 'text', text: ' ' },
-      { type: 'link', text: 'Link', url: 'https://example.com' },
-    ];
-    assert.deepStrictEqual(tokensToStyledSegments(tokens), [
-      { type: 'text', content: 'Text ', bold: false, italic: false, url: undefined },
-      { type: 'text', content: 'Bold', bold: true, italic: false, url: undefined },
-      { type: 'text', content: ' ', bold: false, italic: false, url: undefined },
-      { type: 'text', content: 'Italic', bold: false, italic: true, url: undefined },
-      { type: 'text', content: ' ', bold: false, italic: false, url: undefined },
-      { type: 'text', content: 'BoldItalic', bold: true, italic: true, url: undefined },
-      { type: 'text', content: ' ', bold: false, italic: false, url: undefined },
-      { type: 'link', content: 'Link', bold: false, italic: false, url: 'https://example.com' },
-    ]);
+describe('escapeMarkdown', () => {
+  it('makes any value render as itself', () => {
+    for (const value of ['*nix', 'snake_case_name', '5 * 3 * 2', '[draft](notes)', 'C:\\path', '`tick`', '**not bold**']) {
+      assert.strictEqual(plain(escapeMarkdown(value)), value, value);
+    }
   });
 });

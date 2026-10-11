@@ -1,5 +1,5 @@
 import assert from 'assert';
-import { DEFAULT_HEADING_FONT_SIZE, DEFAULT_MARGINS_BY_SIZE, DEFAULT_PAGE_SIZE, DEFAULT_TEXT_FONT_SIZE, getDefaultMargins, PAGE_SIZES, RESUME_DEFAULT_MARGINS, WRAP_EPSILON } from '../../src/constants.ts';
+import { DEFAULT_HEADING_FONT_SIZE, DEFAULT_MARGINS_BY_SIZE, DEFAULT_PAGE_SIZE, DEFAULT_TEXT_FONT_SIZE, getDefaultMargins, PAGE_SIZES, RESUME_DEFAULT_MARGINS } from '../../src/constants.ts';
 
 describe('constants', () => {
   describe('PAGE_SIZES', () => {
@@ -50,7 +50,6 @@ describe('constants', () => {
 
   describe('Font size and layout constants', () => {
     it('defines expected numerical constants', () => {
-      assert.strictEqual(WRAP_EPSILON, 0.5);
       assert.strictEqual(DEFAULT_TEXT_FONT_SIZE, 12);
       assert.strictEqual(DEFAULT_HEADING_FONT_SIZE, 24);
     });

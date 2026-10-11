@@ -35,19 +35,17 @@ describe('template engine', (): void => {
       assert.strictEqual(result, 'Alice (TypeScript)');
     });
 
-    it('returns template as-is when Liquid syntax error occurs', (): void => {
+    it('throws when Liquid syntax error occurs', (): void => {
       const invalidTemplate = 'Hello, {{ name ';
-      const result = render(invalidTemplate, { name: 'World' });
-      assert.strictEqual(result, invalidTemplate);
+      assert.throws(() => render(invalidTemplate, { name: 'World' }), /Invalid template/);
     });
 
-    it('returns template as-is when runtime error occurs during rendering', (): void => {
+    it('throws when runtime error occurs during rendering', (): void => {
       registerFilter('errFilter', () => {
         throw new Error('Runtime filter exception');
       });
       const template = 'Hello {{ name | errFilter }}';
-      const result = render(template, { name: 'World' });
-      assert.strictEqual(result, template);
+      assert.throws(() => render(template, { name: 'World' }), /Invalid template/);
     });
   });
 
@@ -62,7 +60,7 @@ describe('template engine', (): void => {
       assert.strictEqual(res2, 'User: Bob (Guest)');
     });
 
-    it('returns original template on render error in compiled function', (): void => {
+    it('throws on render error in compiled function', (): void => {
       // Register a filter that throws an error
       registerFilter('throwError', () => {
         throw new Error('Filter error');
@@ -70,8 +68,7 @@ describe('template engine', (): void => {
 
       const template = '{{ name | throwError }}';
       const templateFn = compile(template);
-      const result = templateFn({ name: 'Test' });
-      assert.strictEqual(result, template);
+      assert.throws(() => templateFn({ name: 'Test' }), /Invalid template/);
     });
 
     it('compiled function renders falsy values correctly', (): void => {

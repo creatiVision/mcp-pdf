@@ -5,20 +5,22 @@
  * Handlers use these for field-level rendering while maintaining structural layout.
  */
 
-import type { FieldTemplates } from './ir/types.ts';
+import type { ContactItem, FieldTemplates } from './ir/types.ts';
+import { escapeMarkdown } from './markdown.ts';
 import { registerFilter, render } from './template.ts';
 
 /**
- * Default field templates
+ * Default field templates. Templates produce markdown and inserted values are escaped; `contactLine` joins items
+ * that are already markdown, so it inserts them `raw`.
  */
 export const DEFAULT_FIELD_TEMPLATES: Required<FieldTemplates> = {
   location: '{{ city }}{% if region %}, {{ region }}{% endif %}',
   dateRange: "{{ start | date: 'MMM YYYY' }}{% if start %} – {% endif %}{{ end | date: 'MMM YYYY' | default: 'Present' }}",
   degree: '{{ studyType }}{% if area %}, {{ area }}{% endif %}',
-  contactLine: "{{ items | join: ' | ' }}",
-  credential: '{{ title | default: name }}{% if awarder %}, {{ awarder }}{% endif %}{% if issuer %}, {{ issuer %}{% endif %}{% if publisher %}, {{ publisher %}{% endif %}',
+  contactLine: "{{ items | join: ' | ' | raw }}",
+  credential: '{{ title | default: name }}{% if awarder %}, {{ awarder }}{% endif %}{% if issuer %}, {{ issuer }}{% endif %}{% if publisher %}, {{ publisher }}{% endif %}',
   language: '{{ language }}{% if fluency %} ({{ fluency }}){% endif %}',
-  skill: "{{ name }}: {{ keywords | join: ', ' }}",
+  skill: "**{{ name }}**{% if level %} ({{ level }}){% endif %}: {{ keywords | join: ', ' }}",
   url: '[{{ text }}]({{ url }})',
 };
 
@@ -174,7 +176,45 @@ export function mergeFieldTemplates(userTemplates?: FieldTemplates): Required<Fi
  * Render a field template with the given context
  */
 export function renderField(template: string, context: Record<string, unknown>): string {
-  return render(template, context).trim();
+  // Liquid treats '' as true, so empty values are dropped and `{% if field %}` skips them
+  const present = Object.fromEntries(Object.entries(context).filter(([, value]) => value !== ''));
+  return render(template, present).trim();
+}
+
+/**
+ * A value as text: missing values become empty.
+ */
+export function ensureString(value: unknown): string {
+  if (typeof value === 'string') return value;
+  if (value == null) return '';
+  return String(value);
+}
+
+/**
+ * Paragraphs of resume content: an array as given, or text split on blank lines; empty paragraphs are dropped.
+ */
+export function paragraphsFromContent(content: string | string[] | undefined): string[] {
+  if (!content) return [];
+  if (Array.isArray(content)) return content.filter(Boolean);
+  return content
+    .split(/\n\n+/)
+    .map((p) => p.trim())
+    .filter(Boolean);
+}
+
+/**
+ * The header contact line as markdown: locations and links from their templates, other items escaped, joined by
+ * the contactLine template.
+ */
+export function renderContactLine(templates: Required<FieldTemplates>, items: ContactItem[]): string {
+  const texts = items
+    .map((item) => {
+      if (item.location) return renderField(templates.location, item.location);
+      if (item.url) return renderField(templates.url, { text: item.text, url: item.url });
+      return escapeMarkdown(item.text);
+    })
+    .filter((text) => text.length > 0);
+  return renderField(templates.contactLine, { items: texts });
 }
 
 // Flag to track if filters are registered
@@ -209,25 +249,4 @@ export function registerFieldFilters(): void {
     const end = endValue ? String(endValue) : undefined;
     return formatTenure(start, end);
   });
-}
-
-/**
- * Ensure a value is a string.
- */
-export function ensureString(value: unknown): string {
-  if (typeof value === 'string') return value;
-  if (value == null) return '';
-  return String(value);
-}
-
-/**
- * Convert content to array of paragraphs.
- */
-export function paragraphsFromContent(content: string | string[] | undefined): string[] {
-  if (!content) return [];
-  if (Array.isArray(content)) return content.filter(Boolean);
-  return content
-    .split(/\n\n+/)
-    .map((p) => p.trim())
-    .filter(Boolean);
 }

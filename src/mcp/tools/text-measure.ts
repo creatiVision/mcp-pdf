@@ -10,9 +10,11 @@ import { type CallToolResult, ProtocolError, ProtocolErrorCode } from '@mcp-z/se
 import PDFDocument from 'pdfkit';
 import { z } from 'zod';
 import { DEFAULT_TEXT_FONT_SIZE } from '../../constants.ts';
-import { measureTextHeight, measureTextWidth } from '../../lib/content-measure.ts';
 import { registerEmojiFont } from '../../lib/emoji-renderer.ts';
 import { hasEmoji, setupFonts } from '../../lib/fonts.ts';
+import { FONT_OPTION_DESCRIPTION, MARKDOWN_OPTION_DESCRIPTION } from '../../lib/pdf-core.ts';
+import { measureText, type TextRenderConfig } from '../../lib/pdf-helpers.ts';
+import { styleFace } from '../../lib/text-style.ts';
 
 // ============================================================================
 // Schemas
@@ -28,7 +30,8 @@ const textItemSchema = z.object({
 
 const inputSchema = z.object({
   items: z.array(textItemSchema).describe('Array of text items to measure'),
-  font: z.string().optional().describe('Font specification (default: auto). Built-ins: Helvetica, Times-Roman, Courier. Use a path or URL for custom fonts.'),
+  font: z.string().optional().describe(FONT_OPTION_DESCRIPTION),
+  markdown: z.boolean().optional().describe(MARKDOWN_OPTION_DESCRIPTION),
 });
 
 const measurementResultSchema = z.object({
@@ -63,7 +66,7 @@ export type Output = z.infer<typeof outputSchema>;
 
 export default function createTool() {
   async function handler(args: Input): Promise<CallToolResult> {
-    const { items, font } = args;
+    const { items, font, markdown = true } = args;
 
     try {
       // Create a temporary PDFDocument for measurements (not saved)
@@ -74,30 +77,30 @@ export default function createTool() {
       const containsEmoji = hasEmoji(contentText);
       const emojiAvailable = containsEmoji ? registerEmojiFont() : false;
       const fonts = await setupFonts(doc, font);
-      const { regular: regularFont, bold: boldFont } = fonts;
 
       // Measure each item
       const measurements: z.infer<typeof measurementResultSchema>[] = [];
 
       for (const item of items) {
         const fontSize = item.fontSize ?? DEFAULT_TEXT_FONT_SIZE;
-        const fontName = item.bold ? boldFont : regularFont;
+        const style = { bold: item.bold === true };
 
-        // Measure natural width (single line)
-        const width = measureTextWidth(doc, item.text, fontSize, fontName, emojiAvailable);
-
-        // Measure height (accounts for wrapping if width specified)
-        const height = measureTextHeight(doc, item.text, fontSize, fontName, emojiAvailable, {
-          width: item.width,
-          lineGap: item.lineGap,
-        });
+        const config: TextRenderConfig = {
+          typography: { fontSize, fonts, style },
+          features: { enableEmoji: emojiAvailable, markdown },
+          layout: { width: item.width },
+          spacing: { lineGap: item.lineGap },
+        };
+        // Natural single-line width, and height wrapped to the item's width (or the page's)
+        const width = measureText(doc, item.text, { ...config, spacing: { ...config.spacing, lineBreak: false } }).width;
+        const height = measureText(doc, item.text, config).height;
 
         measurements.push({
           text: item.text,
           width: Math.round(width * 100) / 100, // Round to 2 decimal places
           height: Math.round(height * 100) / 100,
           fontSize,
-          font: fontName,
+          font: styleFace(fonts, style),
         });
       }
 
@@ -106,7 +109,7 @@ export default function createTool() {
 
       const result: Output = {
         measurements,
-        font: regularFont,
+        font: fonts.regular,
       };
 
       return {

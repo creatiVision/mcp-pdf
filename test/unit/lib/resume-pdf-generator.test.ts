@@ -2,6 +2,7 @@ import type { Logger } from '@mcp-z/mcp-pdf';
 import assert from 'assert';
 import { generateResumePDFBuffer, type RenderOptions, type ResumeSchema } from '../../../src/lib/resume-pdf-generator.ts';
 import { DEFAULT_TYPOGRAPHY, getResolvedStyle, type TypographyOptions } from '../../../src/lib/types/typography.ts';
+import { pageContents, textRuns } from '../../lib/fixture-fonts.ts';
 
 // Silent logger for tests
 const silentLogger: Logger = {
@@ -157,6 +158,17 @@ describe('Resume Styling Options', () => {
     assert.ok(pdfBuffer instanceof Buffer, 'Should return a Buffer');
     assert.ok(pdfBuffer.length > 0, 'PDF should have content');
     console.log(`    📄 Created: (${pdfBuffer.length} bytes)`);
+  });
+
+  it('keeps default values beside a partial nested override', async () => {
+    const options: RenderOptions = {
+      font: 'Helvetica',
+      typography: { header: { name: { marginBottom: 10 } } } as RenderOptions['typography'],
+    };
+
+    const pdf = await generateResumePDFBuffer(sampleResume, options, silentLogger);
+    const firstSize = /\/F\d+ (\S+) Tf/.exec(pageContents(pdf).join('\n'))?.[1];
+    assert.strictEqual(Number(firstSize), DEFAULT_TYPOGRAPHY.header.name.fontSize, 'name keeps the default font size');
   });
 
   it('generates resume with custom spacing', async () => {
@@ -513,5 +525,52 @@ describe('getResolvedStyle', () => {
     const resolved = getResolvedStyle(customTypography);
     assert.strictEqual(resolved.fontSize, 12);
     assert.strictEqual(resolved.lineGap, 1.5 * 12 - 12);
+  });
+});
+
+describe('Resume page breaks', () => {
+  const para = 'Built systems that scaled to millions of users while mentoring engineers and shipping on schedule. ';
+  const bottomMargin = 50;
+
+  // Text shown on each page, one string per text-showing operation
+  async function pagesOf(resume: ResumeSchema, options: RenderOptions = {}): Promise<string[][]> {
+    const pdf = await generateResumePDFBuffer(resume, { font: 'Helvetica', ...options }, silentLogger);
+    const decode = (operands: string): string => Array.from(operands.matchAll(/<([0-9a-f]*)>/g), (h) => Buffer.from(h[1] as string, 'hex').toString('latin1')).join('');
+    return pageContents(pdf).map((content) => Array.from(content.matchAll(/\[(.*)\] TJ/g), (m) => decode(m[1] as string)));
+  }
+
+  it('starts a long summary on the first page, under the header', async () => {
+    const pages = await pagesOf({ basics: { name: 'Ada', summary: Array.from({ length: 6 }, () => para.repeat(12)).join('\n\n') } });
+    assert.ok(pages[0]?.includes('SUMMARY'), `page 1: ${pages[0]?.slice(0, 3)}`);
+    assert.ok((pages[0]?.length ?? 0) > 20, 'page 1 is filled with summary lines');
+  });
+
+  it('never draws text below the bottom margin', async () => {
+    const long = {
+      basics: { name: 'Ada', summary: Array.from({ length: 4 }, () => para.repeat(10)).join('\n\n') },
+      work: [{ name: 'Co', position: 'Eng', startDate: '2020-01', summary: para.repeat(8), highlights: Array.from({ length: 30 }, (_, i) => `Highlight ${i}: ${para}`) }],
+      skills: Array.from({ length: 20 }, (_, i) => ({ name: `Skill ${i}`, keywords: ['a', 'b'] })),
+    };
+    for (const layout of [undefined, { style: 'two-column' as const, columns: { left: { sections: ['skills'] }, right: { sections: ['basics.summary', 'work'] } } }]) {
+      const pdf = await generateResumePDFBuffer(long, { font: 'Helvetica', ...(layout && { layout }) }, silentLogger);
+      const lowest = Math.min(...textRuns(pdf).map((r) => r.y));
+      assert.ok(lowest >= bottomMargin, `lowest baseline ${lowest} (${layout ? 'two-column' : 'single-column'})`);
+    }
+  });
+
+  it('draws an untitled list of entries', async () => {
+    const pages = await pagesOf({ work: [{ name: 'Engines Ltd', position: 'Lead', startDate: '2020-01', highlights: ['Shipped'] }] }, { sections: { sections: [{ source: 'work' }] } });
+    assert.ok(
+      pages.flat().some((text) => text.includes('Engines Ltd')),
+      pages.flat().join(' | ')
+    );
+  });
+
+  it('draws a section from a custom template', async () => {
+    const pages = await pagesOf({ basics: { name: 'Ada', label: 'Engineer' } }, { sections: { sections: [{ source: 'basics', title: 'About', template: '{{ name }} is an {{ label }}' }] } });
+    assert.ok(
+      pages.flat().some((text) => text.includes('Ada is an Engineer')),
+      pages.flat().join(' | ')
+    );
   });
 });

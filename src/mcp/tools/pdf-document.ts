@@ -15,10 +15,11 @@ import PDFDocument from 'pdfkit';
 import { z } from 'zod';
 import { DEFAULT_HEADING_FONT_SIZE, DEFAULT_TEXT_FONT_SIZE, getDefaultMargins, type Margins, type PageSizePreset } from '../../constants.ts';
 import { registerEmojiFont } from '../../lib/emoji-renderer.ts';
-import { hasEmoji, setupFonts, validateTextForFont } from '../../lib/fonts.ts';
+import { hasEmoji, setupFonts } from '../../lib/fonts.ts';
 import { resolveImageDimensions } from '../../lib/image-dimensions.ts';
-import { extractTextOptions, type PDFOutput, pdfOutputSchema, resolvePageSize } from '../../lib/pdf-core.ts';
-import { renderText, type TextRenderConfig } from '../../lib/pdf-helpers.ts';
+import { resolveContentImages } from '../../lib/image-source.ts';
+import { FONT_OPTION_DESCRIPTION, MARKDOWN_OPTION_DESCRIPTION, type PDFOutput, pdfOutputSchema, resolvePageSize, textItemConfig, validateContentText } from '../../lib/pdf-core.ts';
+import { renderText } from '../../lib/pdf-helpers.ts';
 import { flowingContentItemSchema } from '../../schemas/content.ts';
 import type { StorageExtra } from '../../types.ts';
 
@@ -31,8 +32,8 @@ const inputSchema = z.object({
   filename: z.string().optional().describe('Optional logical filename (metadata only). Storage uses UUID. Defaults to "document.pdf".'),
   title: z.string().optional().describe('Document title metadata'),
   author: z.string().optional().describe('Document author metadata'),
-  font: z.string().optional().describe('Font strategy (default: auto). Built-ins: Helvetica, Times-Roman, Courier. Use a path or URL for Unicode.'),
-  markdown: z.boolean().optional().describe('Enable markdown parsing (links, **bold**, *italic*). Default: false.'),
+  font: z.string().optional().describe(FONT_OPTION_DESCRIPTION),
+  markdown: z.boolean().optional().describe(MARKDOWN_OPTION_DESCRIPTION),
   color: z
     .object({
       background: z.string().optional().describe('Page background color (hex like "#000000" or named color). Default: white.'),
@@ -42,8 +43,10 @@ const inputSchema = z.object({
     .describe('Color settings for the PDF'),
   pageSetup: z
     .object({
-      size: z.enum(['LETTER', 'A4', 'LEGAL']).optional().describe('Page size preset. LETTER: 612×792pt (8.5×11in). A4: 595×842pt (210×297mm). LEGAL: 612×1008pt (8.5×14in). Default: LETTER. Use customSize for non-standard dimensions.'),
-      customSize: z.array(z.number()).length(2).optional().describe('Custom page size as [width, height] in points. Use this instead of size for non-standard dimensions.'),
+      size: z
+        .union([z.enum(['LETTER', 'A4', 'LEGAL']), z.array(z.number()).length(2)])
+        .optional()
+        .describe('Page size preset or custom [width, height] in points. LETTER: 612×792pt (8.5×11in). A4: 595×842pt (210×297mm). LEGAL: 612×1008pt (8.5×14in). Default: LETTER.'),
       margins: z
         .object({
           top: z.number(),
@@ -95,14 +98,17 @@ export default function createTool() {
   async function handler(args: Input, extra: StorageExtra): Promise<CallToolResult> {
     const { storageContext } = extra;
     const { resourceStoreUri, baseUrl, transport } = storageContext;
-    const { filename = 'document.pdf', title, author, font, markdown, color, pageSetup, content } = args;
-    const parseMarkdown = markdown ?? false;
+    const { filename = 'document.pdf', title, author, font, markdown, color, pageSetup, content: requestedContent } = args;
+    const parseMarkdown = markdown ?? true;
     const hyperlinkColor = color?.hyperlink ?? '#0066CC';
 
     try {
+      // Images become local files first: URLs are downloaded, local paths are honored over stdio only
+      const content = await resolveContentImages(requestedContent, transport.type);
+
       // Resolve page size and margins
+      const resolvedPageSize = resolvePageSize(pageSetup?.size as PageSizePreset | [number, number] | undefined);
       const sizePreset = typeof pageSetup?.size === 'string' ? (pageSetup.size as PageSizePreset) : 'LETTER';
-      const resolvedPageSize = pageSetup?.customSize ? { width: pageSetup.customSize[0], height: pageSetup.customSize[1] } : resolvePageSize(sizePreset);
       const margins = pageSetup?.margins ?? getDefaultMargins(sizePreset);
 
       const docOptions = {
@@ -147,15 +153,7 @@ export default function createTool() {
       doc.addPage();
 
       // Validate text content
-      for (const item of content) {
-        if ((item.type === 'text' || item.type === 'heading') && item.text) {
-          const fnt = item.bold ? fonts.bold : fonts.regular;
-          const validation = validateTextForFont(item.text, fnt, undefined);
-          if (validation.hasUnsupportedCharacters) {
-            warnings.push(...validation.warnings);
-          }
-        }
-      }
+      validateContentText(content, fonts, warnings);
 
       // Get content width (page width minus margins)
       const contentWidth = doc.page.width - doc.page.margins.left - doc.page.margins.right;
@@ -178,19 +176,8 @@ export default function createTool() {
         switch (item.type) {
           case 'text': {
             const fontSize = item.fontSize ?? DEFAULT_TEXT_FONT_SIZE;
-            const fnt = item.bold ? fonts.bold : fonts.regular;
 
-            const options = extractTextOptions(item);
-            options.width = item.width ?? contentWidth;
-
-            const textConfig: TextRenderConfig = {
-              typography: { fontSize, fontName: fnt, fonts },
-              features: { enableEmoji: emojiAvailable, markdown: parseMarkdown },
-              color: { hyperlinkColor },
-              layout: { width: options.width, align: options.align, indent: options.indent },
-              spacing: { lineGap: options.lineGap, paragraphGap: options.paragraphGap, characterSpacing: options.characterSpacing, wordSpacing: options.wordSpacing },
-            };
-            renderText(doc, item.text ?? '', textConfig);
+            renderText(doc, item.text ?? '', textItemConfig(item, { fonts, fontSize, bold: item.bold === true, emojiAvailable, markdown: parseMarkdown, hyperlinkColor, width: item.width ?? contentWidth }));
 
             if (item.moveDown) {
               doc.moveDown(item.moveDown);
@@ -200,19 +187,8 @@ export default function createTool() {
 
           case 'heading': {
             const fontSize = item.fontSize ?? DEFAULT_HEADING_FONT_SIZE;
-            const fnt = item.bold !== false ? fonts.bold : fonts.regular;
 
-            const options = extractTextOptions(item);
-            options.width = item.width ?? contentWidth;
-
-            const textConfig: TextRenderConfig = {
-              typography: { fontSize, fontName: fnt, fonts },
-              features: { enableEmoji: emojiAvailable, markdown: parseMarkdown },
-              color: { hyperlinkColor },
-              layout: { width: options.width, align: options.align, indent: options.indent },
-              spacing: { lineGap: options.lineGap, paragraphGap: options.paragraphGap, characterSpacing: options.characterSpacing, wordSpacing: options.wordSpacing },
-            };
-            renderText(doc, item.text ?? '', textConfig);
+            renderText(doc, item.text ?? '', textItemConfig(item, { fonts, fontSize, bold: item.bold !== false, emojiAvailable, markdown: parseMarkdown, hyperlinkColor, width: item.width ?? contentWidth }));
 
             if (item.moveDown) {
               doc.moveDown(item.moveDown);

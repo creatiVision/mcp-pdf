@@ -6,6 +6,7 @@ import { join } from 'path';
 import PDFDocument from 'pdfkit';
 import { registerEmojiFont } from '../../../src/lib/emoji-renderer.ts';
 import { renderText } from '../../../src/lib/pdf-helpers.ts';
+import { DEJAVU_SANS, embeddedFontNames, writeDejaVuCollection } from '../../lib/fixture-fonts.ts';
 
 // Use .tmp/ in package root, never os.tmpdir() (testing-standards)
 const testOutputDir = join(process.cwd(), '.tmp', 'fonts-tests');
@@ -264,11 +265,19 @@ describe('fonts.resolveFont', (): void => {
     it('downloads font from valid URL', async (): Promise<void> => {
       // This will actually download - use a small font
       const url: string = 'https://cdn.jsdelivr.net/npm/@fontsource/noto-sans@5.0.0/files/noto-sans-latin-400-normal.woff2';
-      const result: string | null = await fonts.resolveFont(url);
+      const fontCacheDir = join(process.cwd(), '.tmp', 'fonts-url-cache');
+      try {
+        const result: string | null = await fonts.resolveFont(url, { fontCacheDir });
+        assert.ok(result?.startsWith(fontCacheDir), 'Should download into the given cache');
+        assert.ok(result && existsSync(result), 'Downloaded font should exist');
+      } finally {
+        safeRmSync(fontCacheDir, { recursive: true, force: true });
+      }
+    });
 
-      assert.ok(result !== null, 'Should download font');
-      assert.ok(typeof result === 'string', 'Should return path string');
-      assert.ok(existsSync(result), 'Downloaded font should exist');
+    it('refuses http and non-public hosts', async (): Promise<void> => {
+      await assert.rejects(fonts.resolveFont('http://cdn.jsdelivr.net/font.ttf'), /https/);
+      await assert.rejects(fonts.resolveFont('https://127.0.0.1/font.ttf'), /not a public address/);
     });
 
     it('throws error for invalid URL', async (): Promise<void> => {
@@ -352,14 +361,14 @@ describe('Chinese/CJK Character Rendering', (): void => {
       // Render Chinese text
       const chineseText = '測試中文字符渲染';
       renderText(doc, chineseText, {
-        typography: { fontSize: 12, fontName: fontSet.regular },
+        typography: { fontSize: 12, fonts: fontSet },
         features: { enableEmoji: false },
       });
 
       // Render mixed text
       const mixedText = 'Hello 世界 World';
       renderText(doc, mixedText, {
-        typography: { fontSize: 12, fontName: fontSet.regular },
+        typography: { fontSize: 12, fonts: fontSet },
         features: { enableEmoji: false },
       });
 
@@ -441,7 +450,7 @@ describe('Chinese/CJK Character Rendering', (): void => {
       // Hiragana and Kanji
       const japaneseText = 'こんにちは世界。これはテストです。';
       renderText(doc, japaneseText, {
-        typography: { fontSize: 12, fontName: fontSet.regular },
+        typography: { fontSize: 12, fonts: fontSet },
         features: { enableEmoji: false },
       });
 
@@ -471,7 +480,7 @@ describe('Chinese/CJK Character Rendering', (): void => {
 
       const koreanText = '안녕하세요 세계. 이것은 테스트입니다.';
       renderText(doc, koreanText, {
-        typography: { fontSize: 12, fontName: fontSet.regular },
+        typography: { fontSize: 12, fonts: fontSet },
         features: { enableEmoji: false },
       });
 
@@ -506,7 +515,7 @@ describe('Chinese/CJK Character Rendering', (): void => {
       const mixedText = '你好 👋 世界 🌍';
       const pageWidth = doc.page.width - doc.page.margins.left - doc.page.margins.right;
       renderText(doc, mixedText, {
-        typography: { fontSize: 12, fontName: fontSet.regular },
+        typography: { fontSize: 12, fonts: fontSet },
         features: { enableEmoji: emojiAvailable },
         layout: { width: pageWidth },
       });
@@ -700,132 +709,75 @@ Achievements:
   });
 });
 
-describe('SSRF Protection in Font Downloading', (): void => {
-  describe('isPrivateIP', (): void => {
-    it('identifies loopback addresses as private', (): void => {
-      assert.strictEqual(fonts.isPrivateIP('127.0.0.1'), true);
-      assert.strictEqual(fonts.isPrivateIP('127.0.0.2'), true);
-      assert.strictEqual(fonts.isPrivateIP('127.255.255.255'), true);
-      assert.strictEqual(fonts.isPrivateIP('::1'), true);
-      assert.strictEqual(fonts.isPrivateIP('0:0:0:0:0:0:0:1'), true);
+describe('fonts.setupFonts with a font file', (): void => {
+  async function renderToBuffer(fontSpec: string, text: string): Promise<Buffer> {
+    const doc = new PDFDocument();
+    const chunks: Buffer[] = [];
+    doc.on('data', (c: Buffer) => chunks.push(c));
+    const done = new Promise<Buffer>((resolve) => doc.on('end', () => resolve(Buffer.concat(chunks))));
+    const fontSet = await fonts.setupFonts(doc, fontSpec);
+    renderText(doc, text, {
+      typography: { fontSize: 12, fonts: fontSet },
+      layout: { width: 400 },
+      features: { enableEmoji: false, markdown: true },
     });
+    doc.end();
+    return done;
+  }
 
-    it('identifies RFC1918 private IPv4 addresses as private', (): void => {
-      assert.strictEqual(fonts.isPrivateIP('10.0.0.1'), true);
-      assert.strictEqual(fonts.isPrivateIP('10.255.255.255'), true);
-      assert.strictEqual(fonts.isPrivateIP('172.16.0.1'), true);
-      assert.strictEqual(fonts.isPrivateIP('172.31.255.255'), true);
-      assert.strictEqual(fonts.isPrivateIP('192.168.0.1'), true);
-      assert.strictEqual(fonts.isPrivateIP('192.168.255.255'), true);
-    });
-
-    it('identifies link-local and cloud metadata addresses as private', (): void => {
-      assert.strictEqual(fonts.isPrivateIP('169.254.169.254'), true);
-      assert.strictEqual(fonts.isPrivateIP('169.254.0.1'), true);
-      assert.strictEqual(fonts.isPrivateIP('fe80::1'), true);
-    });
-
-    it('identifies IPv6 unique local addresses as private', (): void => {
-      assert.strictEqual(fonts.isPrivateIP('fc00::1'), true);
-      assert.strictEqual(fonts.isPrivateIP('fd00::1'), true);
-    });
-
-    it('identifies IPv4-mapped IPv6 loopback and private addresses', (): void => {
-      assert.strictEqual(fonts.isPrivateIP('::ffff:127.0.0.1'), true);
-      assert.strictEqual(fonts.isPrivateIP('::ffff:10.0.0.1'), true);
-    });
-
-    it('identifies additional restricted IPv4 and IPv6 ranges', (): void => {
-      assert.strictEqual(fonts.isPrivateIP('192.0.0.1'), true);
-      assert.strictEqual(fonts.isPrivateIP('192.88.99.1'), true);
-      assert.strictEqual(fonts.isPrivateIP('198.18.0.1'), true);
-      assert.strictEqual(fonts.isPrivateIP('198.19.255.255'), true);
-      assert.strictEqual(fonts.isPrivateIP('2001:db8::1'), true);
-      assert.strictEqual(fonts.isPrivateIP('100::1'), true);
-    });
-
-    it('identifies public IP addresses as non-private', (): void => {
-      assert.strictEqual(fonts.isPrivateIP('8.8.8.8'), false);
-      assert.strictEqual(fonts.isPrivateIP('1.1.1.1'), false);
-      assert.strictEqual(fonts.isPrivateIP('104.18.0.1'), false);
-      assert.strictEqual(fonts.isPrivateIP('172.32.0.1'), false);
-    });
+  it('embeds the font file for plain text', async (): Promise<void> => {
+    const names = embeddedFontNames(await renderToBuffer(DEJAVU_SANS, 'Привет мир'));
+    assert.deepStrictEqual([...new Set(names)], ['DejaVuSans']);
   });
 
-  describe('isPrivateHost', (): void => {
-    it('identifies local hostnames as private', (): void => {
-      assert.strictEqual(fonts.isPrivateHost('localhost'), true);
-      assert.strictEqual(fonts.isPrivateHost('LOCALHOST'), true);
-      assert.strictEqual(fonts.isPrivateHost('my.local'), true);
-      assert.strictEqual(fonts.isPrivateHost('service.internal'), true);
-      assert.strictEqual(fonts.isPrivateHost('router.lan'), true);
-      assert.strictEqual(fonts.isPrivateHost('app.localhost'), true);
-    });
-
-    it('identifies public domain names as non-private', (): void => {
-      assert.strictEqual(fonts.isPrivateHost('cdn.jsdelivr.net'), false);
-      assert.strictEqual(fonts.isPrivateHost('fonts.googleapis.com'), false);
-      assert.strictEqual(fonts.isPrivateHost('example.com'), false);
-    });
+  it('embeds the font file for bold and italic markdown', async (): Promise<void> => {
+    const names = embeddedFontNames(await renderToBuffer(DEJAVU_SANS, 'Привет **жирный** и *курсив* текст'));
+    assert.ok(names.length > 0 && names.every((n) => n === 'DejaVuSans'), `expected only DejaVuSans, got ${names.join(', ')}`);
   });
 
-  describe('validateFontUrl', (): void => {
-    it('rejects unsupported protocols', async (): Promise<void> => {
-      await assert.rejects(async () => await fonts.validateFontUrl('file:///etc/passwd'), /Only HTTP and HTTPS protocols are allowed/);
+  it('embeds the auto-detected system font', async function (): Promise<void> {
+    if (!fonts.getSystemFont()) this.skip();
+    const names = embeddedFontNames(await renderToBuffer('auto', 'Привет мир'));
+    assert.ok(names.length > 0 && !names.includes('Helvetica'), `expected the system font, got ${names.join(', ')}`);
+  });
+});
 
-      await assert.rejects(async () => await fonts.validateFontUrl('ftp://example.com/font.ttf'), /Only HTTP and HTTPS protocols are allowed/);
-    });
-
-    it('rejects URLs targeting local hosts and private IPs', async (): Promise<void> => {
-      await assert.rejects(async () => await fonts.validateFontUrl('http://localhost/font.ttf'), /Access to local\/internal host/);
-
-      await assert.rejects(async () => await fonts.validateFontUrl('http://127.0.0.1/font.ttf'), /Access to private\/restricted IP address/);
-
-      await assert.rejects(async () => await fonts.validateFontUrl('http://169.254.169.254/latest/meta-data'), /Access to private\/restricted IP address/);
-
-      await assert.rejects(async () => await fonts.validateFontUrl('http://10.0.0.1/font.ttf'), /Access to private\/restricted IP address/);
-    });
-
-    it('returns resolvedAddresses attached to URL result', async (): Promise<void> => {
-      const parsed = await fonts.validateFontUrl('https://cdn.jsdelivr.net/npm/@fontsource/noto-sans@5.0.0/files/noto-sans-latin-400-normal.woff2');
-      assert.ok(Array.isArray(parsed.resolvedAddresses), 'resolvedAddresses should be an array');
-      assert.ok(parsed.resolvedAddresses.length > 0, 'resolvedAddresses should not be empty');
-      assert.ok(parsed.resolvedAddresses[0].address, 'should have address property');
-    });
-
-    it('allows valid public HTTP/HTTPS URLs', async (): Promise<void> => {
-      const parsed = await fonts.validateFontUrl('https://cdn.jsdelivr.net/npm/@fontsource/noto-sans@5.0.0/files/noto-sans-latin-400-normal.woff2');
-      assert.strictEqual(parsed.hostname, 'cdn.jsdelivr.net');
-    });
-
-    it('enforces ALLOWED_FONT_DOMAINS when configured', async (): Promise<void> => {
-      const origEnv = process.env.ALLOWED_FONT_DOMAINS;
-      try {
-        process.env.ALLOWED_FONT_DOMAINS = 'jsdelivr.net, gstatic.com';
-
-        // Allowed host
-        const parsed = await fonts.validateFontUrl('https://cdn.jsdelivr.net/font.woff2');
-        assert.strictEqual(parsed.hostname, 'cdn.jsdelivr.net');
-
-        // Disallowed host
-        await assert.rejects(async () => await fonts.validateFontUrl('https://example.com/font.woff2'), /not in the allowed font domains list/);
-      } finally {
-        if (origEnv !== undefined) {
-          process.env.ALLOWED_FONT_DOMAINS = origEnv;
-        } else {
-          delete process.env.ALLOWED_FONT_DOMAINS;
-        }
-      }
-    });
+describe('fonts.validateTextForFont with a font file', (): void => {
+  it('accepts characters the font covers', (): void => {
+    const result = fonts.validateTextForFont('Привет мир', 'DejaVuSans', DEJAVU_SANS);
+    assert.strictEqual(result.hasUnsupportedCharacters, false);
   });
 
-  describe('resolveFont SSRF protection', (): void => {
-    it('rejects font downloads from private or restricted URLs', async (): Promise<void> => {
-      await assert.rejects(async () => await fonts.resolveFont('http://127.0.0.1/font.ttf'), /Font download rejected/);
+  it('reports characters the font lacks', (): void => {
+    const result = fonts.validateTextForFont('Hello 你好', 'DejaVuSans', DEJAVU_SANS);
+    assert.deepStrictEqual(Array.from(result.unsupportedChars.keys()), ['你', '好']);
+  });
+});
 
-      await assert.rejects(async () => await fonts.resolveFont('http://169.254.169.254/latest/meta-data'), /Font download rejected/);
+describe('fonts.setupFonts styles', (): void => {
+  const fixtureDir = join(process.cwd(), '.tmp', 'fonts-styles-tests');
+  after(() => safeRmSync(fixtureDir, { recursive: true, force: true }));
 
-      await assert.rejects(async () => await fonts.resolveFont('http://localhost:8080/font.ttf'), /Font download rejected/);
-    });
+  it('marks bold and italic synthetic for a font file with one style', async (): Promise<void> => {
+    const fontSet = await fonts.setupFonts(new PDFDocument(), DEJAVU_SANS);
+    assert.deepStrictEqual(fontSet.synthetic, { bold: true, italic: true });
+    assert.strictEqual(fontSet.file, DEJAVU_SANS);
+  });
+
+  it('registers the real faces of a collection', async (): Promise<void> => {
+    const collection = writeDejaVuCollection(fixtureDir);
+    const fontSet = await fonts.setupFonts(new PDFDocument(), collection);
+    assert.deepStrictEqual(fontSet.synthetic, { bold: false, italic: false });
+    assert.strictEqual(new Set([fontSet.regular, fontSet.bold, fontSet.italic, fontSet.boldItalic]).size, 4);
+  });
+
+  it('identifies faces by weight and italic angle when style flags are absent', async (): Promise<void> => {
+    const collection = writeDejaVuCollection(fixtureDir, { faces: ['DejaVuSans-ExtraLight.ttf', 'DejaVuSans.ttf', 'DejaVuSans-Bold.ttf', 'DejaVuSans-Oblique.ttf'], clearStyleFlags: true, name: 'DejaVuSans-weights' });
+    const fontSet = await fonts.setupFonts(new PDFDocument(), collection);
+    assert.deepStrictEqual({ regular: fontSet.regular, bold: fontSet.bold, italic: fontSet.italic, synthetic: fontSet.synthetic }, { regular: 'DejaVuSans', bold: 'DejaVuSans-Bold', italic: 'DejaVuSans-Oblique', synthetic: { bold: false, italic: false } });
+  });
+
+  it('returns the built-in faces of a standard font', (): void => {
+    assert.deepStrictEqual(fonts.standardFonts('Times-Roman'), { regular: 'Times-Roman', bold: 'Times-Bold', italic: 'Times-Italic', boldItalic: 'Times-BoldItalic' });
   });
 });

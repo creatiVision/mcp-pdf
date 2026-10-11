@@ -1,9 +1,8 @@
 /**
  * Image dimension utilities for PDF generation.
  *
- * Follows the React Native pattern:
- * - Local files: Read intrinsic dimensions from file headers
- * - Network images: Require explicit dimensions (throw error otherwise)
+ * Reads intrinsic dimensions from local file headers; images given by URL are downloaded to a local file first
+ * (see image-source.ts).
  *
  * Only PNG and JPEG are supported: those are the only image formats PDFKit
  * 0.20.2 can embed. PDFImage.open gates on exactly two byte prefixes:
@@ -37,17 +36,11 @@
 
 import * as fs from 'fs';
 import * as path from 'path';
+import { IMAGE_CACHE_DIR } from './download.ts';
 
 export interface ImageDimensions {
   width: number;
   height: number;
-}
-
-/**
- * Check if a path is a URL (http:// or https://)
- */
-function isUrl(imagePath: string): boolean {
-  return imagePath.startsWith('http://') || imagePath.startsWith('https://');
 }
 
 /**
@@ -178,11 +171,16 @@ export function parseImageDimensions(buffer: Buffer): ImageDimensions | null {
  * or allocating full file buffers for large image files.
  *
  * @param imagePath - Absolute or relative path to image file
- * @returns Dimensions or null if file doesn't exist or can't be read
+/**
+ * Check if a path is a URL (http:// or https://)
  */
+export function isUrl(imagePath: string): boolean {
+  return imagePath.startsWith('http://') || imagePath.startsWith('https://');
+}
+
 /**
  * Check if a local image path is safe from path traversal attacks.
- * Verifies that the resolved path (and its realpath if the file exists) stays within process.cwd().
+ * Verifies that the resolved path (and its realpath if the file exists) stays within process.cwd() or IMAGE_CACHE_DIR.
  */
 export function isLocalPathSafe(imagePath: string): boolean {
   if (isUrl(imagePath)) {
@@ -190,19 +188,22 @@ export function isLocalPathSafe(imagePath: string): boolean {
   }
   try {
     const workingDir = path.resolve(process.cwd());
+    const cacheDir = path.resolve(IMAGE_CACHE_DIR);
     const resolvedPath = path.resolve(workingDir, imagePath);
 
-    // Prevent directory traversal outside workingDir
-    const relativePath = path.relative(workingDir, resolvedPath);
-    if (relativePath.startsWith("..") || path.isAbsolute(relativePath)) {
+    const isInside = (parent: string, candidate: string): boolean => {
+      const rel = path.relative(parent, candidate);
+      return !rel.startsWith('..') && !path.isAbsolute(rel);
+    };
+
+    if (!isInside(workingDir, resolvedPath) && !isInside(cacheDir, resolvedPath)) {
       return false;
     }
 
     // Check symlink target if file exists
     if (fs.existsSync(resolvedPath)) {
       const realPath = fs.realpathSync(resolvedPath);
-      const realRelativePath = path.relative(workingDir, realPath);
-      if (realRelativePath.startsWith("..") || path.isAbsolute(realRelativePath)) {
+      if (!isInside(workingDir, realPath) && !isInside(cacheDir, realPath)) {
         return false;
       }
     }
@@ -297,7 +298,7 @@ export async function getImageDimensions(imagePath: string): Promise<ImageDimens
  * If only width or height is provided, the other is calculated from aspect ratio
  * (if intrinsic dimensions are available).
  *
- * @param imagePath - Path or URL to image
+ * @param imagePath - Path to a local image file (URLs are downloaded before layout)
  * @param explicitWidth - User-provided width (optional)
  * @param explicitHeight - User-provided height (optional)
  * @returns Resolved dimensions

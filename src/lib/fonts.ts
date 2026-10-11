@@ -1,17 +1,12 @@
-import { createHash } from 'node:crypto';
-import { lookup } from 'node:dns/promises';
-import { existsSync } from 'node:fs';
-import { mkdir, writeFile } from 'node:fs/promises';
-import http from 'node:http';
-import https from 'node:https';
-import { isIP } from 'node:net';
-import { tmpdir } from 'node:os';
-import { join } from 'node:path';
 import emojiRegexFactory from 'emoji-regex';
 import { type Font, openSync as fontkitOpenSync } from 'fontkit';
+import { existsSync } from 'fs';
+import { basename, extname } from 'path';
 import type PDFKit from 'pdfkit';
+import { downloadFile, FONT_CACHE_DIR } from './download.ts';
 import type { FontConfig } from './types/typography.ts';
 
+export { FONT_CACHE_DIR, IMAGE_CACHE_DIR, MAX_DOWNLOAD_BYTES } from './download.ts';
 export type { FontConfig } from './types/typography.ts';
 
 // All 14 PDF Standard Fonts (built into PDF spec, no files needed)
@@ -32,7 +27,7 @@ export function isPDFStandardFont(font: string): font is PDFStandardFont {
  */
 export function needsUnicodeFont(text: string): boolean {
   // Anything beyond ASCII + Latin-1 (0x00-0xFF) needs Unicode font
-  return /[Ā-￿]/.test(text);
+  return /[\u0100-\uFFFF]/.test(text);
 }
 
 /**
@@ -50,287 +45,18 @@ export function needsUnicodeFont(text: string): boolean {
  * @param text - Text to check for emoji
  * @returns True if text contains emoji
  */
-// Cache the emoji regex instance globally to avoid recompiling on every call
-const cachedEmojiRegex = emojiRegexFactory();
-
 export function hasEmoji(text: string): boolean {
-  // Reset lastIndex because the cached regex is global (/g) and test() mutates lastIndex
-  cachedEmojiRegex.lastIndex = 0;
-  return cachedEmojiRegex.test(text);
-}
-
-/**
- * Check if an IP address is a private, loopback, or internal address
- */
-export function isPrivateIP(ip: string): boolean {
-  // Handle IPv4-mapped IPv6 addresses (e.g. ::ffff:127.0.0.1)
-  if (ip.toLowerCase().startsWith('::ffff:')) {
-    const ipv4Part = ip.slice(7);
-    if (isIP(ipv4Part) === 4) {
-      return isPrivateIP(ipv4Part);
-    }
-  }
-
-  const ipType = isIP(ip);
-  if (ipType === 4) {
-    const parts = ip.split('.').map((p) => parseInt(p, 10));
-    if (parts.length !== 4 || parts.some(Number.isNaN)) {
-      return true; // invalid IPv4, treat as restricted
-    }
-
-    const [a, b] = parts;
-
-    // 0.0.0.0/8 (Current network)
-    if (a === 0) return true;
-    // 10.0.0.0/8 (Private network)
-    if (a === 10) return true;
-    // 100.64.0.0/10 (Shared address space / CGNAT)
-    if (a === 100 && b >= 64 && b <= 127) return true;
-    // 127.0.0.0/8 (Loopback)
-    if (a === 127) return true;
-    // 169.254.0.0/16 (Link-local, cloud metadata 169.254.169.254)
-    if (a === 169 && b === 254) return true;
-    // 172.16.0.0/12 (Private network)
-    if (a === 172 && b >= 16 && b <= 31) return true;
-    // 192.0.0.0/24 (IETF Protocol Assignments)
-    if (a === 192 && b === 0 && parts[2] === 0) return true;
-    // 192.0.2.0/24 (TEST-NET-1)
-    if (a === 192 && b === 0 && parts[2] === 2) return true;
-    // 192.88.99.0/24 (6to4 Relay Anycast)
-    if (a === 192 && b === 88 && parts[2] === 99) return true;
-    // 192.168.0.0/16 (Private network)
-    if (a === 192 && b === 168) return true;
-    // 198.18.0.0/15 (Benchmarking)
-    if (a === 198 && (b === 18 || b === 19)) return true;
-    // 198.51.100.0/24 (TEST-NET-2)
-    if (a === 198 && b === 51 && parts[2] === 100) return true;
-    // 203.0.113.0/24 (TEST-NET-3)
-    if (a === 203 && b === 0 && parts[2] === 113) return true;
-    // 224.0.0.0/4 (Multicast)
-    if (a >= 224 && a <= 239) return true;
-    // 240.0.0.0/4 (Reserved)
-    if (a >= 240) return true;
-
-    return false;
-  }
-
-  if (ipType === 6) {
-    const normalized = ip.toLowerCase();
-    // Loopback ::1 or 0:0:0:0:0:0:0:1 or ::
-    if (normalized === '::1' || normalized === '0:0:0:0:0:0:0:1' || normalized === '::') return true;
-    // Link-local fe80::/10
-    if (normalized.startsWith('fe8') || normalized.startsWith('fe9') || normalized.startsWith('fea') || normalized.startsWith('feb')) return true;
-    // Unique local fc00::/7
-    if (normalized.startsWith('fc') || normalized.startsWith('fd')) return true;
-    // Documentation 2001:db8::/32
-    if (normalized.startsWith('2001:db8') || normalized.startsWith('2001:0db8')) return true;
-    // Discard-only 100::/64
-    if (normalized.startsWith('100::')) return true;
-
-    return false;
-  }
-
-  return true; // invalid/unknown IP type -> treat as restricted
-}
-
-/**
- * Check if a hostname is a local/internal hostname
- */
-export function isPrivateHost(hostname: string): boolean {
-  const host = hostname.toLowerCase();
-  if (host === 'localhost' || host.endsWith('.local') || host.endsWith('.internal') || host.endsWith('.lan') || host.endsWith('.localhost')) {
-    return true;
-  }
-  return false;
-}
-
-export interface ValidatedUrl extends URL {
-  resolvedAddresses: Array<{ address: string; family: number }>;
-}
-
-/**
- * Validate font URL against SSRF vulnerabilities:
- * - Only allow HTTP/HTTPS
- * - Disallow local/private hostnames and IP addresses
- * - Perform DNS lookup to verify resolved IP addresses
- * - Enforce optional ALLOWED_FONT_DOMAINS allowlist
- */
-export async function validateFontUrl(urlStr: string): Promise<ValidatedUrl> {
-  let parsedUrl: URL;
-  try {
-    parsedUrl = new URL(urlStr);
-  } catch {
-    throw new Error(`Invalid URL: ${urlStr}`);
-  }
-
-  if (parsedUrl.protocol !== 'http:' && parsedUrl.protocol !== 'https:') {
-    throw new Error(`Font download rejected: Only HTTP and HTTPS protocols are allowed (got ${parsedUrl.protocol})`);
-  }
-
-  const hostname = parsedUrl.hostname;
-  if (!hostname) {
-    throw new Error(`Font download rejected: Missing hostname in URL ${urlStr}`);
-  }
-
-  if (isPrivateHost(hostname)) {
-    throw new Error(`Font download rejected: Access to local/internal host '${hostname}' is disallowed`);
-  }
-
-  let addresses: Array<{ address: string; family: number }> = [];
-
-  if (isIP(hostname)) {
-    if (isPrivateIP(hostname)) {
-      throw new Error(`Font download rejected: Access to private/restricted IP address '${hostname}' is disallowed`);
-    }
-    addresses = [{ address: hostname, family: isIP(hostname) }];
-  } else {
-    try {
-      const resolved = await lookup(hostname, { all: true });
-      if (!resolved || resolved.length === 0) {
-        throw new Error(`Font download rejected: Could not resolve hostname '${hostname}'`);
-      }
-
-      for (const addr of resolved) {
-        if (isPrivateIP(addr.address)) {
-          throw new Error(`Font download rejected: Hostname '${hostname}' resolved to private/restricted IP address '${addr.address}'`);
-        }
-      }
-      addresses = resolved;
-    } catch (err: unknown) {
-      if (err instanceof Error && err.message.startsWith('Font download rejected:')) {
-        throw err;
-      }
-      const msg = err instanceof Error ? err.message : String(err);
-      throw new Error(`Font download rejected: DNS lookup failed for '${hostname}': ${msg}`);
-    }
-  }
-
-  const allowedDomainsEnv = process.env.ALLOWED_FONT_DOMAINS;
-  if (allowedDomainsEnv) {
-    const allowedList = allowedDomainsEnv
-      .split(',')
-      .map((d) => d.trim().toLowerCase())
-      .filter(Boolean);
-    const lowerHost = hostname.toLowerCase();
-    const isAllowed = allowedList.some((domain) => lowerHost === domain || lowerHost.endsWith(`.${domain}`));
-    if (!isAllowed) {
-      throw new Error(`Font download rejected: Hostname '${hostname}' is not in the allowed font domains list`);
-    }
-  }
-
-  return Object.assign(parsedUrl, { resolvedAddresses: addresses });
-}
-
-interface SafeFetchResponse {
-  ok: boolean;
-  status: number;
-  statusText: string;
-  headers: Headers;
-  arrayBuffer(): Promise<ArrayBuffer>;
-}
-
-function httpRequestPinned(validatedUrl: ValidatedUrl): Promise<SafeFetchResponse> {
-  return new Promise((resolve, reject) => {
-    const protocol = validatedUrl.protocol === 'https:' ? https : http;
-    const addrs = validatedUrl.resolvedAddresses;
-
-    const req = protocol.request(
-      validatedUrl,
-      {
-        method: 'GET',
-        headers: {
-          'User-Agent': 'mcp-pdf-font-downloader',
-          Accept: '*/*',
-        },
-        lookup: (_hostname, options, callback) => {
-          if (options && options.all) {
-            callback(null, addrs);
-          } else if (addrs.length > 0) {
-            callback(null, addrs[0].address, addrs[0].family);
-          } else {
-            callback(new Error('No resolved IP available'), '', 4);
-          }
-        },
-      },
-      (res) => {
-        const chunks: Buffer[] = [];
-        res.on('data', (chunk: Buffer) => chunks.push(chunk));
-        res.on('end', () => {
-          const headersMap = new Headers();
-          for (const [key, val] of Object.entries(res.headers)) {
-            if (Array.isArray(val)) {
-              for (const v of val) headersMap.append(key, v);
-            } else if (val !== undefined) {
-              headersMap.set(key, val);
-            }
-          }
-
-          const buf = Buffer.concat(chunks);
-          const arrayBuf = buf.buffer.slice(buf.byteOffset, buf.byteOffset + buf.byteLength);
-
-          resolve({
-            ok: (res.statusCode ?? 500) >= 200 && (res.statusCode ?? 500) < 300,
-            status: res.statusCode ?? 500,
-            statusText: res.statusMessage ?? '',
-            headers: headersMap,
-            arrayBuffer: async () => arrayBuf,
-          });
-        });
-        res.on('error', reject);
-      }
-    );
-
-    req.on('error', reject);
-    req.end();
-  });
-}
-
-/**
- * Safely fetch a resource with SSRF protection on redirects and DNS pinning
- */
-async function fetchSafe(urlStr: string, maxRedirects = 5): Promise<SafeFetchResponse> {
-  let currentUrl = urlStr;
-  let redirectCount = 0;
-
-  while (redirectCount <= maxRedirects) {
-    const validatedUrl = await validateFontUrl(currentUrl);
-
-    const response = await httpRequestPinned(validatedUrl);
-
-    if (response.status >= 300 && response.status < 400) {
-      const location = response.headers.get('location');
-      if (!location) {
-        throw new Error(`Font download failed: Redirect status ${response.status} with no Location header`);
-      }
-      currentUrl = new URL(location, validatedUrl).toString();
-      redirectCount++;
-      continue;
-    }
-
-    return response;
-  }
-
-  throw new Error(`Font download failed: Too many redirects (exceeded ${maxRedirects})`);
+  // Use emoji-regex package for accurate, up-to-date emoji detection
+  const emojiRegex = emojiRegexFactory();
+  return emojiRegex.test(text);
 }
 
 /**
  * Auto-detect a system font with Unicode support
  * Returns path to first found Unicode-capable font, or null if none found
  * Prioritizes fonts with known CJK (Chinese/Japanese/Korean) support
- */
-let cachedSystemFont: string | null | undefined;
-
-/**
- * Auto-detect a system font with Unicode support
- * Returns path to first found Unicode-capable font, or null if none found
- * Prioritizes fonts with known CJK (Chinese/Japanese/Korean) support
- * Caches the result to avoid synchronous file system existence checks on every call.
  */
 export function getSystemFont(): string | null {
-  if (cachedSystemFont !== undefined) {
-    return cachedSystemFont;
-  }
-
   // System fonts ordered by Unicode/CJK support quality
   const unicodeSupportedFonts = [
     // macOS - prioritize Arial Unicode (full CJK support)
@@ -343,74 +69,33 @@ export function getSystemFont(): string | null {
     '/usr/share/fonts/truetype/dejavu/DejaVuSans.ttf',
     '/usr/share/fonts/TTF/DejaVuSans.ttf',
     // Windows - Segoe UI has better Unicode than Arial
-    'C:WindowsFontssegoeui.ttf',
-    'C:WindowsFontsNotoSans-Regular.ttf',
-    'C:WindowsFontsarial.ttf',
+    'C:\\Windows\\Fonts\\segoeui.ttf',
+    'C:\\Windows\\Fonts\\NotoSans-Regular.ttf',
+    'C:\\Windows\\Fonts\\arial.ttf',
   ];
 
   for (const fontPath of unicodeSupportedFonts) {
     if (existsSync(fontPath)) {
-      cachedSystemFont = fontPath;
       return fontPath;
     }
   }
 
-  cachedSystemFont = null;
   return null;
 }
 
-/**
- * Download font from URL to temp directory
- * Returns path to downloaded font
- * Caches downloads - if the file already exists, returns cached path
- * Throws error if download fails
- */
-async function downloadToTemp(url: string): Promise<string> {
-  const tempDir = join(tmpdir(), 'mcp-pdf-fonts');
-  await mkdir(tempDir, { recursive: true });
-
-  // Validate URL and resolve font safely (SSRF protection)
-  const validatedUrl = await validateFontUrl(url);
-
-  // Extract filename safely using SHA-256 hash of full URL to prevent cache collisions
-  const urlHash = createHash('sha256').update(url).digest('hex').slice(0, 16);
-  const rawFilename = validatedUrl.pathname.split('/').pop() || 'font.woff2';
-  const sanitizedFilename = rawFilename.replace(/[^a-zA-Z0-9._-]/g, '_') || 'font.woff2';
-  const tempPath = join(tempDir, `font-${urlHash}-${sanitizedFilename}`);
-
-  // Check if already cached
-  if (existsSync(tempPath)) {
-    return tempPath;
-  }
-
-  // Download if not cached
-  const response = await fetchSafe(url);
-  if (!response.ok) {
-    throw new Error(`Font download failed (HTTP ${response.status}): ${response.statusText}`);
-  }
-
-  const MAX_FONT_SIZE = 20 * 1024 * 1024; // 20 MB max
-  const contentLength = response.headers.get('content-length');
-  if (contentLength && parseInt(contentLength, 10) > MAX_FONT_SIZE) {
-    throw new Error(`Font download failed: File size exceeds maximum allowed limit (${MAX_FONT_SIZE} bytes)`);
-  }
-
-  const buffer = await response.arrayBuffer();
-  if (buffer.byteLength > MAX_FONT_SIZE) {
-    throw new Error(`Font download failed: Downloaded file size exceeds maximum allowed limit (${MAX_FONT_SIZE} bytes)`);
-  }
-
-  await writeFile(tempPath, Buffer.from(buffer));
-  return tempPath;
+export interface FontOptions {
+  /** Cache for fonts downloaded from URLs (default: FONT_CACHE_DIR) */
+  fontCacheDir?: string;
 }
 
 /**
  * Resolve font specification to actual font path or name
- * Supports: PDF standard fonts, absolute paths, URLs, 'auto' detection
+ * Supports: PDF standard fonts, absolute paths, https URLs on public hosts, 'auto' detection
  * Returns null if font cannot be resolved (caller should use fallback)
- * Throws error if URL download fails
+ * Throws if a URL is refused or its download fails
  */
-async function doResolveFont(fontSpec: string): Promise<string | null> {
+
+export async function resolveFont(fontSpec: string, options: FontOptions = {}): Promise<string | null> {
   // 1. Check if it's a PDF standard font (built-in, no file needed)
   if (isPDFStandardFont(fontSpec)) {
     return fontSpec;
@@ -426,9 +111,9 @@ async function doResolveFont(fontSpec: string): Promise<string | null> {
     return existsSync(fontSpec) ? fontSpec : null;
   }
 
-  // 4. URL (http/https) - throws on download failure
+  // 4. URL - downloaded into the font cache; http and non-public hosts are refused
   if (fontSpec.startsWith('http://') || fontSpec.startsWith('https://')) {
-    return await downloadToTemp(fontSpec);
+    return await downloadFile(fontSpec, options.fontCacheDir ?? FONT_CACHE_DIR);
   }
 
   // Unknown font specification
@@ -436,93 +121,68 @@ async function doResolveFont(fontSpec: string): Promise<string | null> {
 }
 
 /**
- * Resolve font specification to actual font path or name
- * Supports: PDF standard fonts, absolute paths, URLs, 'auto' detection
- * Returns null if font cannot be resolved (caller should use fallback)
- * Throws error if URL download fails
+ * Faces of a standard PDF font family. Symbol and ZapfDingbats have one face, used for every style.
  */
-export async function resolveFont(fontSpec: string): Promise<string | null> {
-  const cached = resolvedFontCache.get(fontSpec);
-  if (cached !== undefined) {
-    return cached;
-  }
+export function standardFonts(font: PDFStandardFont): FontConfig {
+  if (font.startsWith('Helvetica')) return { regular: 'Helvetica', bold: 'Helvetica-Bold', italic: 'Helvetica-Oblique', boldItalic: 'Helvetica-BoldOblique' };
+  if (font.startsWith('Times')) return { regular: 'Times-Roman', bold: 'Times-Bold', italic: 'Times-Italic', boldItalic: 'Times-BoldItalic' };
+  if (font.startsWith('Courier')) return { regular: 'Courier', bold: 'Courier-Bold', italic: 'Courier-Oblique', boldItalic: 'Courier-BoldOblique' };
+  return { regular: font, bold: font, italic: font, boldItalic: font };
+}
 
-  const resolved = await doResolveFont(fontSpec);
-  resolvedFontCache.set(fontSpec, resolved);
-  return resolved;
+const REGULAR_WEIGHT = 400;
+const BOLD_WEIGHT = 700;
+
+const faceWeight = (face: Font): number => face['OS/2']?.usWeightClass ?? REGULAR_WEIGHT;
+const isBoldFace = (face: Font): boolean => Boolean(face['OS/2']?.fsSelection.bold) || faceWeight(face) >= BOLD_WEIGHT;
+const isItalicFace = (face: Font): boolean => Boolean(face['OS/2']?.fsSelection.italic) || face.italicAngle !== 0;
+
+/**
+ * Registers the faces of a font file with the document. A collection (.ttc) contributes a face per style it
+ * contains: bold by flag or weight 700+, italic by flag or slant, nearest to weight 400 or 700. Styles without
+ * a face are marked synthetic.
+ */
+function registerFontFile(doc: PDFKit.PDFDocument, fontPath: string): FontConfig {
+  const opened = fontkitOpenSync(fontPath);
+  const isCollection = 'fonts' in opened;
+  const faces = isCollection ? opened.fonts : [opened];
+  const find = (bold: boolean, italic: boolean): Font | undefined => {
+    const target = bold ? BOLD_WEIGHT : REGULAR_WEIGHT;
+    const distance = (face: Font): number => Math.abs(faceWeight(face) - target);
+    return faces.filter((f) => isBoldFace(f) === bold && isItalicFace(f) === italic).sort((a, b) => distance(a) - distance(b))[0];
+  };
+  const register = (face: Font): string => {
+    doc.registerFont(face.postscriptName, fontPath, isCollection ? face.postscriptName : undefined);
+    return face.postscriptName;
+  };
+
+  const regularFace = find(false, false) ?? faces[0];
+  if (!regularFace) throw new Error(`Font collection ${fontPath} contains no fonts`);
+  const boldFace = find(true, false);
+  const italicFace = find(false, true);
+  const boldItalicFace = find(true, true);
+  const regular = register(regularFace);
+  return {
+    regular,
+    bold: boldFace ? register(boldFace) : regular,
+    italic: italicFace ? register(italicFace) : regular,
+    ...(boldItalicFace && { boldItalic: register(boldItalicFace) }),
+    synthetic: { bold: !boldFace, italic: !italicFace },
+    file: fontPath,
+  };
 }
 
 /**
  * Setup fonts for PDF document
- * Resolves font specification and registers with PDFKit
- * Returns FontConfig with regular/bold/oblique variants
- * Falls back to Helvetica if font resolution or registration fails
+ * Resolves font specification and registers its faces with PDFKit
+ * Falls back to Helvetica if the font cannot be resolved
  */
-export async function setupFonts(_doc: PDFKit.PDFDocument, fontSpec: string | undefined): Promise<FontConfig> {
-  // Default to auto-detect if not specified
-  const spec = fontSpec || 'auto';
-
+export async function setupFonts(doc: PDFKit.PDFDocument, fontSpec: string | undefined, options: FontOptions = {}): Promise<FontConfig> {
   // Resolve the font (may throw on URL download failure)
-  const resolvedFont = await resolveFont(spec);
-
-  // Fall back to Helvetica if resolution failed
-  if (!resolvedFont) {
-    return {
-      regular: 'Helvetica',
-      bold: 'Helvetica-Bold',
-      italic: 'Helvetica-Oblique',
-      boldItalic: 'Helvetica-BoldOblique',
-    };
-  }
-
-  // If it's a standard PDF font, use its variants
-  if (isPDFStandardFont(resolvedFont)) {
-    // Map to standard font families
-    if (resolvedFont.startsWith('Helvetica')) {
-      return {
-        regular: 'Helvetica',
-        bold: 'Helvetica-Bold',
-        italic: 'Helvetica-Oblique',
-        boldItalic: 'Helvetica-BoldOblique',
-      };
-    }
-    if (resolvedFont.startsWith('Times')) {
-      return {
-        regular: 'Times-Roman',
-        bold: 'Times-Bold',
-        italic: 'Times-Italic',
-        boldItalic: 'Times-BoldItalic',
-      };
-    }
-    if (resolvedFont.startsWith('Courier')) {
-      return {
-        regular: 'Courier',
-        bold: 'Courier-Bold',
-        italic: 'Courier-Oblique',
-        boldItalic: 'Courier-BoldOblique',
-      };
-    }
-
-    // For Symbol or ZapfDingbats, just use as-is for all variants
-    return {
-      regular: resolvedFont,
-      bold: resolvedFont,
-      italic: resolvedFont,
-      boldItalic: resolvedFont,
-    };
-  }
-
-  // It's a custom font file path (from auto-detect or explicit path)
-  // Custom fonts typically don't have separate bold/italic files readily available,
-  // so we fall back to Helvetica which has all variants built-in.
-  // This ensures bold/italic markdown styling works correctly.
-  // Note: We intentionally do NOT register the custom font since we won't use it.
-  return {
-    regular: 'Helvetica',
-    bold: 'Helvetica-Bold',
-    italic: 'Helvetica-Oblique',
-    boldItalic: 'Helvetica-BoldOblique',
-  };
+  const resolvedFont = await resolveFont(fontSpec || 'auto', options);
+  if (!resolvedFont) return standardFonts('Helvetica');
+  if (isPDFStandardFont(resolvedFont)) return standardFonts(resolvedFont);
+  return registerFontFile(doc, resolvedFont);
 }
 
 export interface CharacterValidationResult {
@@ -531,18 +191,56 @@ export interface CharacterValidationResult {
   unsupportedChars: Map<string, number>; // char -> codePoint
 }
 
-// Cache for opened fontkit font instances by file path
-const fontCache = new Map<string, Font | null>();
-// Cache for resolved font paths/names
-const resolvedFontCache = new Map<string, string | null>();
+function describeChars(unsupportedChars: Map<string, number>): string {
+  const chars = Array.from(unsupportedChars.entries())
+    .slice(0, 5)
+    .map(([char, code]) => `"${char}" (U+${code.toString(16).toUpperCase().padStart(4, '0')})`)
+    .join(', ');
+  const more = unsupportedChars.size > 5 ? ` and ${unsupportedChars.size - 5} more` : '';
+  return `${chars}${more}`;
+}
 
-/**
- * Clear the internal fontkit font instance cache
- */
-export function clearFontCache(): void {
-  fontCache.clear();
-  resolvedFontCache.clear();
-  cachedSystemFont = undefined;
+function isStandardFontName(fontName: string): boolean {
+  return PDF_STANDARD_FONTS.some((f) => {
+    const baseName = f.split('-')[0];
+    return baseName && fontName.startsWith(baseName);
+  });
+}
+
+function validateStandardFont(text: string, fontName: string): CharacterValidationResult {
+  const unsupportedChars = new Map<string, number>();
+  for (const char of text) {
+    const code = char.charCodeAt(0);
+    if (code < 0x20 || code > 0xff) unsupportedChars.set(char, code);
+  }
+  if (unsupportedChars.size === 0) return { hasUnsupportedCharacters: false, warnings: [], unsupportedChars };
+  return {
+    hasUnsupportedCharacters: true,
+    warnings: [`Characters ${describeChars(unsupportedChars)} won't render in ${fontName}. Standard PDF fonts only support WinAnsi encoding (0x20-0xFF). Consider using a custom Unicode font or alternative characters.`],
+    unsupportedChars,
+  };
+}
+
+function validateFontFile(text: string, fontName: string, font: Font): CharacterValidationResult {
+  const unsupportedChars = new Map<string, number>();
+  for (const char of text) {
+    const codePoint = char.codePointAt(0);
+    if (codePoint && !font.hasGlyphForCodePoint(codePoint)) unsupportedChars.set(char, codePoint);
+  }
+  if (unsupportedChars.size === 0) return { hasUnsupportedCharacters: false, warnings: [], unsupportedChars };
+  return {
+    hasUnsupportedCharacters: true,
+    warnings: [`Characters ${describeChars(unsupportedChars)} are not supported by font ${fontName}. Consider using a different font or alternative characters.`],
+    unsupportedChars,
+  };
+}
+
+/** Opens a font file with fontkit; a collection (TTC) yields its first font. */
+function openFontFile(fontPath: string): Font {
+  const fontOrCollection = fontkitOpenSync(fontPath);
+  const font = 'fonts' in fontOrCollection ? fontOrCollection.fonts[0] : fontOrCollection;
+  if (!font) throw new Error(`Font collection ${fontPath} contains no fonts`);
+  return font;
 }
 
 /**
@@ -552,82 +250,27 @@ export function clearFontCache(): void {
  * For custom fonts: uses fontkit to check actual glyph support
  *
  * @param text - Text to validate
- * @param fontName - Font name (e.g., 'Helvetica', 'CustomFont')
+ * @param fontName - Font name used in warnings (e.g., 'Helvetica')
  * @param fontPath - Path to font file (required for custom fonts)
  * @returns Validation result with warnings
  */
 export function validateTextForFont(text: string, fontName: string, fontPath: string | undefined): CharacterValidationResult {
-  const result: CharacterValidationResult = {
-    hasUnsupportedCharacters: false,
-    warnings: [],
-    unsupportedChars: new Map(),
+  if (isStandardFontName(fontName)) return validateStandardFont(text, fontName);
+  if (!fontPath) return { hasUnsupportedCharacters: false, warnings: [], unsupportedChars: new Map() };
+  return validateFontFile(text, fontName, openFontFile(fontPath));
+}
+
+/**
+ * Returns a validator for text drawn with `fonts` (as returned by setupFonts).
+ * A font file is opened on first use and held only as long as the validator.
+ */
+export function createFontValidator(fonts: FontConfig): (text: string) => CharacterValidationResult {
+  const fontFile = fonts.file;
+  if (!fontFile) return (text) => (isStandardFontName(fonts.regular) ? validateStandardFont(text, fonts.regular) : { hasUnsupportedCharacters: false, warnings: [], unsupportedChars: new Map() });
+  const fontName = basename(fontFile, extname(fontFile));
+  let font: Font | undefined;
+  return (text) => {
+    font ??= openFontFile(fontFile);
+    return validateFontFile(text, fontName, font);
   };
-
-  // Check if it's a standard PDF font
-  const isStandardFont = PDF_STANDARD_FONTS.some((f) => {
-    const baseName = f.split('-')[0];
-    return baseName && fontName.startsWith(baseName);
-  });
-
-  if (isStandardFont) {
-    // Standard PDF fonts only support WinAnsi encoding (0x20-0xFF)
-    for (const char of text) {
-      const code = char.charCodeAt(0);
-
-      if (code < 0x20 || code > 0xff) {
-        result.hasUnsupportedCharacters = true;
-        result.unsupportedChars.set(char, code);
-      }
-    }
-
-    if (result.hasUnsupportedCharacters) {
-      const chars = Array.from(result.unsupportedChars.entries())
-        .slice(0, 5)
-        .map(([char, code]) => `"${char}" (U+${code.toString(16).toUpperCase().padStart(4, '0')})`)
-        .join(', ');
-      const more = result.unsupportedChars.size > 5 ? ` and ${result.unsupportedChars.size - 5} more` : '';
-
-      result.warnings.push(`Characters ${chars}${more} won't render in ${fontName}. Standard PDF fonts only support WinAnsi encoding (0x20-0xFF). Consider using a custom Unicode font or alternative characters.`);
-    }
-  } else if (fontPath && !fontName.startsWith('CustomFont')) {
-    // Custom font - check actual glyph coverage using fontkit
-    try {
-      let font = fontCache.get(fontPath);
-      if (font === undefined) {
-        const fontOrCollection = fontkitOpenSync(fontPath);
-        font = 'fonts' in fontOrCollection ? (fontOrCollection.fonts[0] ?? null) : (fontOrCollection ?? null);
-        fontCache.set(fontPath, font);
-      }
-
-      if (!font) {
-        // Font collection is empty or invalid - can't validate
-        return result;
-      }
-
-      for (const char of text) {
-        const codePoint = char.codePointAt(0);
-        if (codePoint && !font.hasGlyphForCodePoint(codePoint)) {
-          result.hasUnsupportedCharacters = true;
-          result.unsupportedChars.set(char, codePoint);
-        }
-      }
-
-      if (result.hasUnsupportedCharacters) {
-        const chars = Array.from(result.unsupportedChars.entries())
-          .slice(0, 5)
-          .map(([char, code]) => `"${char}" (U+${code.toString(16).toUpperCase().padStart(4, '0')})`)
-          .join(', ');
-        const more = result.unsupportedChars.size > 5 ? ` and ${result.unsupportedChars.size - 5} more` : '';
-
-        result.warnings.push(`Characters ${chars}${more} are not supported by font ${fontName}. Consider using a different font or alternative characters.`);
-      }
-    } catch (_err) {
-      // If we can't load the font, we can't validate - remain silent (no false positives)
-    }
-  }
-
-  // For unknown fonts or when we can't determine support, remain silent
-  // (no false positives)
-
-  return result;
 }

@@ -14,7 +14,7 @@ import { DEFAULT_SECTIONS, transformToLayout } from './ir/transform.ts';
 import type { FieldTemplates, SectionsConfig } from './ir/types.ts';
 import type { FontConfig, TypographyOptions } from './types/typography.ts';
 import { DEFAULT_TYPOGRAPHY } from './types/typography.ts';
-import { calculateResumeLayout, calculateTwoColumnLayout, createRenderContext, type PageConfig, paginateLayoutWithAtomicGroups, renderPage } from './yoga-resume/index.ts';
+import { calculateResumeLayout, calculateTwoColumnLayout, drawPage, type PageConfig, paginateBlocks, type RenderContext } from './yoga-resume/index.ts';
 
 // Re-export types for external use
 export type { ResumeSchema };
@@ -64,17 +64,11 @@ export interface RenderOptions {
   backgroundColor?: string;
   /** Explicit margins (if provided, overrides default resume margins) */
   margins?: Margins;
-  /** Whether to parse markdown */
+  /** Whether to parse markdown in free text (default: true); field templates are always markdown */
   parseMarkdown?: boolean;
   /** Color for hyperlink text (default: #0066CC) */
   hyperlinkColor?: string;
 }
-
-/**
- * Setup fonts for the PDF document
- * Returns a FontConfig compatible with TypographyOptions (includes italic variants)
- * Falls back to Helvetica if font resolution or registration fails
- */
 
 /**
  * Merge partial typography options with defaults
@@ -83,8 +77,6 @@ function mergeTypography(defaults: TypographyOptions, overrides?: Partial<Typogr
   if (!overrides && !fonts) {
     return defaults;
   }
-
-  const merged = { ...defaults };
 
   // Validate that all override keys exist in defaults
   if (overrides) {
@@ -97,24 +89,25 @@ function mergeTypography(defaults: TypographyOptions, overrides?: Partial<Typogr
     }
   }
 
-  // Apply typography overrides first
-  if (overrides) {
-    if (overrides.fonts) merged.fonts = { ...merged.fonts, ...overrides.fonts };
-    if (overrides.header) merged.header = { ...merged.header, ...overrides.header };
-    if (overrides.sectionTitle) merged.sectionTitle = { ...merged.sectionTitle, ...overrides.sectionTitle };
-    if (overrides.entry) merged.entry = { ...merged.entry, ...overrides.entry };
-    if (overrides.content) merged.content = { ...merged.content, ...overrides.content };
-    if (overrides.entryHeader) merged.entryHeader = { ...merged.entryHeader, ...overrides.entryHeader };
-    if (overrides.quote) merged.quote = { ...merged.quote, ...overrides.quote };
-    if (overrides.divider) merged.divider = { ...merged.divider, ...overrides.divider };
-  }
+  const merged = mergeDeep(defaults, overrides ?? {}) as TypographyOptions;
 
-  // Apply font overrides from setupFonts - these take priority over typography.fonts
+  // Fonts from setupFonts take priority over typography.fonts
   if (fonts) {
     merged.fonts = fonts;
   }
 
   return merged;
+}
+
+/** Merges plain-object overrides into defaults at every depth, so a partial nested override keeps its siblings. */
+function mergeDeep(base: object, overrides: object): object {
+  const result: Record<string, unknown> = { ...base };
+  for (const [key, value] of Object.entries(overrides)) {
+    const current = result[key];
+    const bothObjects = value !== null && typeof value === 'object' && !Array.isArray(value) && current !== null && typeof current === 'object' && !Array.isArray(current);
+    if (value !== undefined) result[key] = bothObjects ? mergeDeep(current, value) : value;
+  }
+  return result;
 }
 
 /**
@@ -201,15 +194,15 @@ export async function generateResumePDFBuffer(resume: ResumeSchema, options: Ren
     margins: options.margins ?? RESUME_DEFAULT_MARGINS,
   };
 
-  // Create render context
-  const renderCtx = createRenderContext({
+  const ctx: RenderContext = {
     doc,
     typography,
     fieldTemplates: layoutDoc.fieldTemplates,
     emojiAvailable,
-    parseMarkdown: options.parseMarkdown ?? false,
+    fonts: typography.fonts,
+    parseMarkdown: options.parseMarkdown ?? true,
     hyperlinkColor: options.hyperlinkColor ?? '#0066CC',
-  });
+  };
 
   // Return a promise that resolves when the PDF is complete
   return new Promise<Buffer>((resolve, reject) => {
@@ -218,64 +211,14 @@ export async function generateResumePDFBuffer(resume: ResumeSchema, options: Ren
     doc.on('end', () => resolve(Buffer.concat(chunks)));
     doc.on('error', reject);
 
-    // Render based on layout type using Yoga layout engine
     (async () => {
-      if (isTwoColumnLayout(resumeLayout)) {
-        // Two-column layout: calculate and render columns
-        const twoColumnResult = await calculateTwoColumnLayout(
-          doc,
-          {
-            gap: resumeLayout.gap,
-            left: {
-              width: resumeLayout.left.width,
-              elements: resumeLayout.left.elements,
-            },
-            right: {
-              width: resumeLayout.right.width,
-              elements: resumeLayout.right.elements,
-            },
-          },
-          typography,
-          layoutDoc.fieldTemplates,
-          emojiAvailable,
-          pageConfig
-        );
-
-        // Paginate both columns
-        const leftPages = paginateLayoutWithAtomicGroups(twoColumnResult.left, pageConfig);
-        const rightPages = paginateLayoutWithAtomicGroups(twoColumnResult.right, pageConfig);
-        const maxPages = Math.max(leftPages.length, rightPages.length);
-
-        // Render pages
-        for (let pageNum = 0; pageNum < maxPages; pageNum++) {
-          if (pageNum > 0) {
-            doc.addPage();
-          }
-          // Render left column nodes for this page
-          const leftPage = leftPages[pageNum];
-          if (leftPage) {
-            renderPage(renderCtx, leftPage);
-          }
-          // Render right column nodes for this page
-          const rightPage = rightPages[pageNum];
-          if (rightPage) {
-            renderPage(renderCtx, rightPage);
-          }
-        }
-      } else {
-        // Single-column layout
-        const layoutNodes = await calculateResumeLayout(doc, resumeLayout.elements, typography, layoutDoc.fieldTemplates, emojiAvailable, pageConfig);
-
-        // Paginate the layout
-        const pages = paginateLayoutWithAtomicGroups(layoutNodes, pageConfig);
-
-        // Render all pages
-        for (const page of pages) {
-          if (page.number > 0) {
-            doc.addPage();
-          }
-          renderPage(renderCtx, page);
-        }
+      // Each column is laid out by Yoga and cut into pages between lines; columns share page numbers
+      const columns = isTwoColumnLayout(resumeLayout) ? Object.values(await calculateTwoColumnLayout(ctx, { gap: resumeLayout.gap, left: resumeLayout.left, right: resumeLayout.right }, pageConfig)) : [await calculateResumeLayout(ctx, resumeLayout.elements, pageConfig)];
+      const columnPages = columns.map((placed) => paginateBlocks(placed, pageConfig));
+      const pageCount = Math.max(...columnPages.map((pages) => pages.length));
+      for (let page = 0; page < pageCount; page++) {
+        if (page > 0) doc.addPage();
+        for (const pages of columnPages) drawPage(pages[page] ?? []);
       }
       doc.end();
     })().catch(reject);

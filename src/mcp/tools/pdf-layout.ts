@@ -13,10 +13,11 @@
 import { type CallToolResult, getFileUri, ProtocolError, ProtocolErrorCode, type ToolModule, writeFile } from '@mcp-z/server';
 import { z } from 'zod';
 import { DEFAULT_HEADING_FONT_SIZE, DEFAULT_TEXT_FONT_SIZE, type Margins, type PageSizePreset } from '../../constants.ts';
-import { createWidthMeasurer, measureTextHeight } from '../../lib/content-measure.ts';
 import { resolveImageDimensions } from '../../lib/image-dimensions.ts';
-import { createPDFDocument, extractTextOptions, type PDFOutput, pdfOutputSchema, validateContentText } from '../../lib/pdf-core.ts';
-import { renderText, type TextRenderConfig } from '../../lib/pdf-helpers.ts';
+import { resolveContentImages } from '../../lib/image-source.ts';
+import { createPDFDocument, FONT_OPTION_DESCRIPTION, MARKDOWN_OPTION_DESCRIPTION, type PDFOutput, pdfOutputSchema, type TextBaseItem, textItemConfig, validateContentText } from '../../lib/pdf-core.ts';
+import { measureText, renderText } from '../../lib/pdf-helpers.ts';
+import { selectFace } from '../../lib/text-style.ts';
 import { calculateLayout, type LayoutContent, type LayoutNode } from '../../lib/yoga-layout.ts';
 import type { BaseContentItem } from '../../schemas/content.ts';
 import { type ContentItem, contentItemSchema, type GroupItem, layoutSchema } from '../../schemas/layout.ts';
@@ -31,8 +32,8 @@ const inputSchema = z.object({
   filename: z.string().optional().describe('Optional logical filename (metadata only). Storage uses UUID. Defaults to "document.pdf".'),
   title: z.string().optional().describe('Document title metadata'),
   author: z.string().optional().describe('Document author metadata'),
-  font: z.string().optional().describe('Font strategy (default: auto). Built-ins: Helvetica, Times-Roman, Courier. Use a path or URL for Unicode.'),
-  markdown: z.boolean().optional().describe('Enable markdown parsing (links, **bold**, *italic*). Default: false.'),
+  font: z.string().optional().describe(FONT_OPTION_DESCRIPTION),
+  markdown: z.boolean().optional().describe(MARKDOWN_OPTION_DESCRIPTION),
   color: z
     .object({
       background: z.string().optional().describe('Page background color (hex like "#000000" or named color). Default: white.'),
@@ -43,8 +44,10 @@ const inputSchema = z.object({
   layout: layoutSchema,
   pageSetup: z
     .object({
-      size: z.enum(['LETTER', 'A4', 'LEGAL']).optional().describe('Page size preset. LETTER: 612×792pt (8.5×11in). A4: 595×842pt (210×297mm). LEGAL: 612×1008pt (8.5×14in). Default: LETTER. Use customSize for non-standard dimensions.'),
-      customSize: z.array(z.number()).length(2).optional().describe('Custom page size as [width, height] in points. Use this instead of size for non-standard dimensions.'),
+      size: z
+        .union([z.enum(['LETTER', 'A4', 'LEGAL']), z.array(z.number()).length(2)])
+        .optional()
+        .describe('Page size preset or custom [width, height] in points. LETTER: 612×792pt (8.5×11in). A4: 595×842pt (210×297mm). LEGAL: 612×1008pt (8.5×14in). Default: LETTER.'),
       margins: z
         .object({
           top: z.number(),
@@ -91,12 +94,15 @@ export default function createTool() {
   async function handler(args: Input, extra: StorageExtra): Promise<CallToolResult> {
     const { storageContext } = extra;
     const { resourceStoreUri, baseUrl, transport } = storageContext;
-    const { filename = 'document.pdf', title, author, font, markdown, color, layout, pageSetup, content } = args;
-    const parseMarkdown = markdown ?? false;
+    const { filename = 'document.pdf', title, author, font, markdown, color, layout, pageSetup, content: requestedContent } = args;
+    const parseMarkdown = markdown ?? true;
     const hyperlinkColor = color?.hyperlink ?? '#0066CC';
     const overflowBehavior = layout?.overflow ?? 'auto';
 
     try {
+      // Images become local files first: URLs are downloaded, local paths are honored over stdio only
+      const content = await resolveContentImages(requestedContent, transport.type);
+
       // Create PDF document with shared utilities
       const contentText = JSON.stringify(content);
       const setup = await createPDFDocument(
@@ -104,7 +110,7 @@ export default function createTool() {
           title,
           author,
           subject: filename,
-          pageSize: pageSetup?.customSize ? [pageSetup.customSize[0], pageSetup.customSize[1]] : (pageSetup?.size as PageSizePreset | undefined),
+          pageSize: pageSetup?.size as PageSizePreset | [number, number] | undefined,
           margins: pageSetup?.margins ?? { top: 0, bottom: 0, left: 0, right: 0 },
           backgroundColor: color?.background,
         },
@@ -115,7 +121,7 @@ export default function createTool() {
       const { doc, pdfPromise, fonts, emojiAvailable, warnings } = setup;
 
       // Validate text content against font
-      validateContentText(content as ContentItem[], fonts.regular, fonts.bold, warnings);
+      validateContentText(content as ContentItem[], fonts, warnings);
 
       // Get page dimensions and margins
       const pageWidth = doc.page.width;
@@ -188,15 +194,11 @@ export default function createTool() {
         if (item.type === 'text' || item.type === 'heading') {
           if (!item.text) return 0;
           const fontSize = item.type === 'heading' ? ((item.fontSize as number) ?? DEFAULT_HEADING_FONT_SIZE) : ((item.fontSize as number) ?? DEFAULT_TEXT_FONT_SIZE);
-          const fontName = item.type === 'heading' ? (item.bold !== false ? fonts.bold : fonts.regular) : item.bold ? fonts.bold : fonts.regular;
-          let height = measureTextHeight(doc, item.text as string, fontSize, fontName, emojiAvailable, {
-            width: availableWidth,
-            indent: item.indent as number | undefined,
-            lineGap: item.lineGap as number | undefined,
-          });
+          const style = { bold: item.type === 'heading' ? item.bold !== false : item.bold === true };
+          let height = measureText(doc, item.text as string, textItemConfig(item as TextBaseItem, { fonts, fontSize, bold: style.bold, emojiAvailable, markdown: parseMarkdown, hyperlinkColor, width: availableWidth })).height;
           const moveDown = item.moveDown as number | undefined;
           if (moveDown !== undefined && moveDown > 0) {
-            doc.fontSize(fontSize).font(fontName);
+            selectFace(doc, fonts, style).fontSize(fontSize);
             height += moveDown * doc.currentLineHeight();
           }
           return height;
@@ -222,41 +224,14 @@ export default function createTool() {
         switch (item.type) {
           case 'text': {
             const fontSize = item.fontSize ?? DEFAULT_TEXT_FONT_SIZE;
-            const fnt = item.bold ? fonts.bold : fonts.regular;
 
-            const options = extractTextOptions(item);
-            if (computedX !== undefined) options.x = computedX;
-            if (computedY !== undefined) options.y = computedY;
-            if (computedWidth !== undefined) options.width = computedWidth;
-
-            const textConfig: TextRenderConfig = {
-              typography: { fontSize, fontName: fnt, fonts },
-              features: { enableEmoji: emojiAvailable, markdown: parseMarkdown },
-              color: { hyperlinkColor },
-              layout: { x: options.x, y: options.y, width: options.width, align: options.align, indent: options.indent },
-              spacing: { lineGap: options.lineGap, paragraphGap: options.paragraphGap, characterSpacing: options.characterSpacing, wordSpacing: options.wordSpacing, moveDown: options.moveDown },
-            };
-            renderText(doc, item.text ?? '', textConfig);
+            renderText(doc, item.text ?? '', textItemConfig(item, { fonts, fontSize, bold: item.bold === true, emojiAvailable, markdown: parseMarkdown, hyperlinkColor, x: computedX, y: computedY, width: computedWidth }));
             break;
           }
           case 'heading': {
             const fontSize = item.fontSize ?? DEFAULT_HEADING_FONT_SIZE;
-            const fnt = item.bold !== false ? fonts.bold : fonts.regular;
 
-            const options = extractTextOptions(item);
-            if (computedX !== undefined) options.x = computedX;
-            if (computedY !== undefined) options.y = computedY;
-            if (computedWidth !== undefined) options.width = computedWidth;
-
-            const textConfig: TextRenderConfig = {
-              typography: { fontSize, fontName: fnt, fonts },
-              features: { enableEmoji: emojiAvailable, markdown: parseMarkdown },
-              color: { hyperlinkColor },
-              layout: { x: options.x, y: options.y, width: options.width, align: options.align, indent: options.indent },
-              spacing: { lineGap: options.lineGap, paragraphGap: options.paragraphGap, characterSpacing: options.characterSpacing, wordSpacing: options.wordSpacing, moveDown: options.moveDown },
-            };
-            renderText(doc, item.text ?? '', textConfig);
-            if (item.color) doc.fillColor('black');
+            renderText(doc, item.text ?? '', textItemConfig(item, { fonts, fontSize, bold: item.bold !== false, emojiAvailable, markdown: parseMarkdown, hyperlinkColor, x: computedX, y: computedY, width: computedWidth }));
             break;
           }
           case 'image': {
@@ -375,8 +350,14 @@ export default function createTool() {
       const pageGroups = groupContentByPage(content as ContentItem[]);
       const maxPage = Math.max(...pageGroups.keys(), 1);
 
-      // Width measurer for row layouts with space-between
-      const measureWidth = createWidthMeasurer(doc, fonts.regular, fonts.bold, emojiAvailable);
+      // Natural single-line width of text and headings, for row layouts with space-between
+      const measureWidth = (item: LayoutContent): number => {
+        if ((item.type !== 'text' && item.type !== 'heading') || !item.text) return 0;
+        const heading = item.type === 'heading';
+        const fontSize = (item.fontSize as number | undefined) ?? (heading ? DEFAULT_HEADING_FONT_SIZE : DEFAULT_TEXT_FONT_SIZE);
+        const config = textItemConfig(item as TextBaseItem, { fonts, fontSize, bold: heading ? item.bold !== false : item.bold === true, emojiAvailable, markdown: parseMarkdown, hyperlinkColor });
+        return measureText(doc, item.text as string, { ...config, spacing: { ...config.spacing, lineBreak: false } }).width;
+      };
 
       // Calculate layout and render per page
       for (let pageNum = 1; pageNum <= maxPage; pageNum++) {
