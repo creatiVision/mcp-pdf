@@ -11,7 +11,7 @@
 import { type CallToolResult, getFileUri, ProtocolError, ProtocolErrorCode, type ToolModule, writeFile } from '@mcp-z/server';
 import { existsSync } from 'fs';
 import { basename } from 'path';
-import { type PngPageOutput, pdfToPng } from 'pdf-to-png-converter';
+import { pdfToPng } from 'pdf-to-png-converter';
 import { z } from 'zod';
 import type { StorageExtra } from '../../types.ts';
 
@@ -82,27 +82,20 @@ export default function createTool() {
       }
 
       // Determine pages to process
-      let pagesToProcess: number[];
+      let pagesToProcess: number[] | undefined;
       if (pages === 'all') {
-        // Metadata-only pass never calls page.render(), so it's unaffected by the concurrency defect below.
-        const metadata = await pdfToPng(pdfPath, { viewportScale, verbosityLevel: 0, returnMetadataOnly: true });
-        pagesToProcess = metadata.map((page) => page.pageNumber);
+        pagesToProcess = undefined;
       } else if (typeof pages === 'number') {
         pagesToProcess = [pages];
       } else {
         pagesToProcess = pages;
       }
 
-      // One pdfToPng() call per page: Node 20's pdfjs-dist fake-worker hangs on concurrent page.render() calls sharing a PDFDocumentProxy.
-      const pngPages: PngPageOutput[] = [];
-      for (const pageNumber of pagesToProcess) {
-        const rendered = await pdfToPng(pdfPath, {
-          viewportScale,
-          pagesToProcess: [pageNumber],
-          verbosityLevel: 0,
-        });
-        pngPages.push(...rendered);
-      }
+      const pngPages = await pdfToPng(pdfPath, {
+        viewportScale,
+        pagesToProcess,
+        verbosityLevel: 0,
+      });
 
       if (pngPages.length === 0) {
         throw new ProtocolError(ProtocolErrorCode.InternalError, 'Failed to render any pages. The PDF may be empty or invalid.');
