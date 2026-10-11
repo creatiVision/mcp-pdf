@@ -5,7 +5,7 @@ import { mkdir } from 'fs/promises';
 import { join } from 'path';
 import PDFDocument from 'pdfkit';
 import { registerEmojiFont } from '../../../src/lib/emoji-renderer.ts';
-import { type PDFTextOptions, renderText } from '../../../src/lib/pdf-helpers.ts';
+import { type PDFTextOptions, measureMarkdownTextHeight, renderText } from '../../../src/lib/pdf-helpers.ts';
 
 type ContentItem =
   | { type: 'text'; text: string; fontSize?: number; bold?: boolean; color?: string; left?: number; top?: number; width?: number; align?: string; oblique?: number | boolean; characterSpacing?: number; moveDown?: number }
@@ -599,4 +599,66 @@ describe('Layout Options for pdf-layout', () => {
 it('print test output directory', () => {
   console.log(`\n📁 Layout test PDFs generated in: ${testOutputDir}`);
   console.log('   Open these files to visually verify layout options\n');
+});
+
+
+describe("measureMarkdownTextHeight", () => {
+  it("measures plain text height correctly", async () => {
+    const doc = new PDFDocument();
+    const fontSet = await fonts.setupFonts(doc, undefined);
+    const options = {
+      width: 200,
+      fontSize: 12,
+      lineGap: 2,
+      fonts: fontSet,
+    };
+
+    const height = measureMarkdownTextHeight(doc, "Simple plain text content", options);
+    assert.strictEqual(typeof height, "number");
+    assert.ok(height > 0);
+  });
+
+  it("measures markdown text with bold formatting taking font width into account", async () => {
+    const doc = new PDFDocument();
+    const fontSet = await fonts.setupFonts(doc, undefined);
+    const options = {
+      width: 150,
+      fontSize: 10,
+      lineGap: 2,
+      fonts: fontSet,
+    };
+
+    const text = "Word **boldword** word **boldword** word **boldword** word";
+
+    const heightWithMarkdown = measureMarkdownTextHeight(doc, text, { ...options, parseMarkdown: true });
+    const heightWithoutMarkdown = measureMarkdownTextHeight(doc, text, { ...options, parseMarkdown: false });
+
+    assert.strictEqual(typeof heightWithMarkdown, "number");
+    assert.strictEqual(typeof heightWithoutMarkdown, "number");
+  });
+
+  it("respects parseMarkdown: false option", async () => {
+    const doc = new PDFDocument();
+    const fontSet = await fonts.setupFonts(doc, undefined);
+
+    const markdownText = "Text with **markdown** formatting";
+    const heightParsed = measureMarkdownTextHeight(doc, markdownText, {
+      width: 200,
+      fontSize: 12,
+      lineGap: 2,
+      fonts: fontSet,
+      parseMarkdown: true,
+    });
+
+    const heightUnparsed = measureMarkdownTextHeight(doc, markdownText, {
+      width: 200,
+      fontSize: 12,
+      lineGap: 2,
+      fonts: fontSet,
+      parseMarkdown: false,
+    });
+
+    assert.strictEqual(typeof heightParsed, "number");
+    assert.strictEqual(typeof heightUnparsed, "number");
+  });
 });

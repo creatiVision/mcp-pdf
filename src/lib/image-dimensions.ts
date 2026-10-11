@@ -180,17 +180,47 @@ export function parseImageDimensions(buffer: Buffer): ImageDimensions | null {
  * @param imagePath - Absolute or relative path to image file
  * @returns Dimensions or null if file doesn't exist or can't be read
  */
-export async function getLocalImageDimensions(imagePath: string): Promise<ImageDimensions | null> {
+/**
+ * Check if a local image path is safe from path traversal attacks.
+ * Verifies that the resolved path (and its realpath if the file exists) stays within process.cwd().
+ */
+export function isLocalPathSafe(imagePath: string): boolean {
+  if (isUrl(imagePath)) {
+    return true;
+  }
   try {
-    // Resolve relative paths and sanitize against path traversal
     const workingDir = path.resolve(process.cwd());
     const resolvedPath = path.resolve(workingDir, imagePath);
 
     // Prevent directory traversal outside workingDir
     const relativePath = path.relative(workingDir, resolvedPath);
-    if (relativePath.startsWith('..') || path.isAbsolute(relativePath)) {
+    if (relativePath.startsWith("..") || path.isAbsolute(relativePath)) {
+      return false;
+    }
+
+    // Check symlink target if file exists
+    if (fs.existsSync(resolvedPath)) {
+      const realPath = fs.realpathSync(resolvedPath);
+      const realRelativePath = path.relative(workingDir, realPath);
+      if (realRelativePath.startsWith("..") || path.isAbsolute(realRelativePath)) {
+        return false;
+      }
+    }
+
+    return true;
+  } catch {
+    return false;
+  }
+}
+
+export async function getLocalImageDimensions(imagePath: string): Promise<ImageDimensions | null> {
+  try {
+    if (!isLocalPathSafe(imagePath)) {
       return null;
     }
+
+    const workingDir = path.resolve(process.cwd());
+    const resolvedPath = path.resolve(workingDir, imagePath);
 
     let handle: fs.promises.FileHandle | null = null;
     try {
@@ -274,6 +304,11 @@ export async function getImageDimensions(imagePath: string): Promise<ImageDimens
  * @throws Error if dimensions cannot be determined
  */
 export async function resolveImageDimensions(imagePath: string, explicitWidth?: number, explicitHeight?: number): Promise<ImageDimensions> {
+  // Validate path traversal for local paths before anything else
+  if (!isUrl(imagePath) && !isLocalPathSafe(imagePath)) {
+    throw new Error(`Cannot determine image dimensions for: ${imagePath}. File may not exist or format is unsupported. Please provide explicit width and height.`);
+  }
+
   // Both dimensions provided - use them directly
   if (explicitWidth !== undefined && explicitHeight !== undefined) {
     return { width: explicitWidth, height: explicitHeight };

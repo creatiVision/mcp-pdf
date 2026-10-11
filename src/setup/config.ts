@@ -7,8 +7,6 @@ import { parseArgs } from 'util';
 import type { ServerConfig } from '../types.ts';
 import { readPkg } from './version-help.ts';
 
-const pkg = readPkg();
-
 // @mcp-z/server is requireable at the >=20 floor; deferred so --version/--help (handled via
 // version-help.ts, never this file) load neither it nor its transitive graph.
 const _require = typeof require === 'undefined' ? Module.createRequire(import.meta.url) : require;
@@ -17,6 +15,7 @@ const _require = typeof require === 'undefined' ? Module.createRequire(import.me
  * Parse PDF server configuration from CLI arguments and environment.
  */
 export function parseConfig(args: string[], env: Record<string, string | undefined>): ServerConfig {
+  const pkg = readPkg();
   const mcpServer = _require('@mcp-z/server') as typeof McpServer;
   const transportConfig = mcpServer.parseConfig(args, env);
 
