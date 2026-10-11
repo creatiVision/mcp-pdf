@@ -599,7 +599,7 @@ export function renderStructuredContent(ctx: RenderContext, element: StructuredC
 
     // Calculate the height of the rendered text and advance
     // Use measureMarkdownTextHeight to account for bold text width (same as rendering)
-    const summaryHeight = measureMarkdownTextHeight(doc, summary, position.width, content.fontSize, lineGap, fonts, ctx.parseMarkdown);
+    const summaryHeight = measureMarkdownTextHeight(doc, summary, { width: position.width, fontSize: content.fontSize, lineGap, fonts, parseMarkdown: ctx.parseMarkdown });
     currentY += summaryHeight + paragraphMargin;
   }
 
@@ -624,7 +624,7 @@ export function renderStructuredContent(ctx: RenderContext, element: StructuredC
 
       // Calculate the height of the bullet text and advance
       // Use measureMarkdownTextHeight to account for bold text width (same as rendering)
-      const bulletHeight = measureMarkdownTextHeight(doc, bulletText, bulletWidth, content.fontSize, lineGap, fonts, ctx.parseMarkdown);
+      const bulletHeight = measureMarkdownTextHeight(doc, bulletText, { width: bulletWidth, fontSize: content.fontSize, lineGap, fonts, parseMarkdown: ctx.parseMarkdown });
       currentY += bulletHeight + bulletMargin;
     }
   }
