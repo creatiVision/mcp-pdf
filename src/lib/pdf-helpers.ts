@@ -278,7 +278,17 @@ function findStyleInfoAtPosition<T extends { start: number; end: number }>(style
   return undefined;
 }
 
-export function measureMarkdownTextHeight(doc: PDFKit.PDFDocument, text: string, width: number, fontSize: number, lineGap: number, fonts: FontConfig, parseMarkdown = true): number {
+export interface MeasureMarkdownTextOptions {
+  width: number;
+  fontSize: number;
+  lineGap: number;
+  fonts: FontConfig;
+  parseMarkdown?: boolean;
+}
+
+export function measureMarkdownTextHeight(doc: PDFKit.PDFDocument, text: string, options: MeasureMarkdownTextOptions): number {
+  const { width, fontSize, lineGap, fonts, parseMarkdown = true } = options;
+
   // Set base font for measurement
   doc.font(fonts.regular).fontSize(fontSize);
 

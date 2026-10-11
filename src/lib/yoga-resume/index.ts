@@ -65,6 +65,7 @@ export {
 // Types
 export type {
   ComputedPosition,
+  CreateRenderContextOptions,
   LayoutConfig,
   MeasureContext,
   Page,

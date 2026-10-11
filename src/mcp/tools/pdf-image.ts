@@ -11,7 +11,7 @@
 import { type CallToolResult, getFileUri, ProtocolError, ProtocolErrorCode, type ToolModule, writeFile } from '@mcp-z/server';
 import { existsSync } from 'fs';
 import { basename } from 'path';
-import { type PngPageOutput, pdfToPng } from 'pdf-to-png-converter';
+import { pdfToPng } from 'pdf-to-png-converter';
 import { z } from 'zod';
 import type { StorageExtra } from '../../types.ts';
 
@@ -82,62 +82,56 @@ export default function createTool() {
       }
 
       // Determine pages to process
-      let pagesToProcess: number[];
+      let pagesToProcess: number[] | undefined;
       if (pages === 'all') {
-        // Metadata-only pass never calls page.render(), so it's unaffected by the concurrency defect below.
-        const metadata = await pdfToPng(pdfPath, { viewportScale, verbosityLevel: 0, returnMetadataOnly: true });
-        pagesToProcess = metadata.map((page) => page.pageNumber);
+        pagesToProcess = undefined;
       } else if (typeof pages === 'number') {
         pagesToProcess = [pages];
       } else {
         pagesToProcess = pages;
       }
 
-      // One pdfToPng() call per page: Node 20's pdfjs-dist fake-worker hangs on concurrent page.render() calls sharing a PDFDocumentProxy.
-      const pngPages: PngPageOutput[] = [];
-      for (const pageNumber of pagesToProcess) {
-        const rendered = await pdfToPng(pdfPath, {
-          viewportScale,
-          pagesToProcess: [pageNumber],
-          verbosityLevel: 0,
-        });
-        pngPages.push(...rendered);
-      }
+      const pngPages = await pdfToPng(pdfPath, {
+        viewportScale,
+        pagesToProcess,
+        verbosityLevel: 0,
+      });
 
       if (pngPages.length === 0) {
         throw new ProtocolError(ProtocolErrorCode.InternalError, 'Failed to render any pages. The PDF may be empty or invalid.');
       }
 
       const pdfBasename = basename(pdfPath, '.pdf');
-      const images: z.infer<typeof imageResultSchema>[] = [];
 
-      for (const pngPage of pngPages) {
-        const pngBuffer = pngPage.content;
-        const pageNum = pngPage.pageNumber;
-        if (!pngBuffer) throw new ProtocolError(ProtocolErrorCode.InternalError, `Failed to render page ${pageNum}.`);
+      const images = await Promise.all(
+        pngPages.map(async (pngPage) => {
+          const pngBuffer = pngPage.content;
+          const pageNum = pngPage.pageNumber;
+          if (!pngBuffer) throw new ProtocolError(ProtocolErrorCode.InternalError, `Failed to render page ${pageNum}.`);
 
-        // Generate output filename
-        const outputFilename = `${pdfBasename}-p${pageNum}.png`;
+          // Generate output filename
+          const outputFilename = `${pdfBasename}-p${pageNum}.png`;
 
-        // Write to storage
-        const { storedName } = await writeFile(pngBuffer, outputFilename, { resourceStoreUri });
+          // Write to storage
+          const { storedName } = await writeFile(pngBuffer, outputFilename, { resourceStoreUri });
 
-        // Generate URI
-        const uri = getFileUri(storedName, transport, {
-          resourceStoreUri,
-          ...(baseUrl && { baseUrl }),
-          endpoint: '/files',
-        });
+          // Generate URI
+          const uri = getFileUri(storedName, transport, {
+            resourceStoreUri,
+            ...(baseUrl && { baseUrl }),
+            endpoint: '/files',
+          });
 
-        images.push({
-          imagePath: storedName,
-          uri,
-          width: pngPage.width,
-          height: pngPage.height,
-          pageNumber: pageNum,
-          fileSizeBytes: pngBuffer.length,
-        });
-      }
+          return {
+            imagePath: storedName,
+            uri,
+            width: pngPage.width,
+            height: pngPage.height,
+            pageNumber: pageNum,
+            fileSizeBytes: pngBuffer.length,
+          };
+        })
+      );
 
       const result: Output = {
         images,
