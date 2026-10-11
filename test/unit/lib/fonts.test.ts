@@ -797,6 +797,36 @@ describe('SSRF Protection in Font Downloading', (): void => {
         }
       }
     });
+
+    it('rejects URLs when DNS lookup fails for non-existent domain', async (): Promise<void> => {
+      const invalidHost = 'this-domain-definitely-does-not-exist-123456789.invalid';
+      await assert.rejects(
+        async () => await fonts.validateFontUrl(`https://${invalidHost}/font.ttf`),
+        (err: unknown) => {
+          assert.ok(err instanceof Error);
+          assert.ok(
+            err.message.startsWith(`Font download rejected: DNS lookup failed for '${invalidHost}':`),
+            `Expected error message to start with DNS lookup failed prefix, got: ${err.message}`
+          );
+          return true;
+        }
+      );
+    });
+
+    it('re-throws error when domain resolves to a private IP address', async (): Promise<void> => {
+      const nipHost = '127.0.0.1.nip.io';
+      await assert.rejects(
+        async () => await fonts.validateFontUrl(`http://${nipHost}/font.ttf`),
+        (err: unknown) => {
+          assert.ok(err instanceof Error);
+          assert.strictEqual(
+            err.message,
+            `Font download rejected: Hostname '${nipHost}' resolved to private/restricted IP address '127.0.0.1'`
+          );
+          return true;
+        }
+      );
+    });
   });
 
   describe('resolveFont SSRF protection', (): void => {
@@ -806,6 +836,20 @@ describe('SSRF Protection in Font Downloading', (): void => {
       await assert.rejects(async () => await fonts.resolveFont('http://169.254.169.254/latest/meta-data'), /Font download rejected/);
 
       await assert.rejects(async () => await fonts.resolveFont('http://localhost:8080/font.ttf'), /Font download rejected/);
+    });
+
+    it('rejects font downloads when DNS lookup fails or resolves to private IP', async (): Promise<void> => {
+      const invalidHost = 'this-domain-definitely-does-not-exist-123456789.invalid';
+      await assert.rejects(
+        async () => await fonts.resolveFont(`https://${invalidHost}/font.ttf`),
+        /Font download rejected: DNS lookup failed for/
+      );
+
+      const nipHost = '127.0.0.1.nip.io';
+      await assert.rejects(
+        async () => await fonts.resolveFont(`http://${nipHost}/font.ttf`),
+        /Font download rejected: Hostname '127.0.0.1.nip.io' resolved to private\/restricted IP address/
+      );
     });
   });
 });
