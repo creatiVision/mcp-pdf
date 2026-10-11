@@ -39,13 +39,7 @@ describe('content-measure utilities', () => {
       const height = measureTextHeight(mockDoc, 'Mocked text', 16, 'Courier', false, { width: 400, lineGap: 2 });
       assert.strictEqual(height, 24);
 
-      assert.deepStrictEqual(calls, [
-        'fontSize:16',
-        'font:Courier',
-        'heightOfString:Mocked text:{"width":400,"lineGap":2}',
-        'font:Times-Roman',
-        'fontSize:14',
-      ]);
+      assert.deepStrictEqual(calls, ['fontSize:16', 'font:Courier', 'heightOfString:Mocked text:{"width":400,"lineGap":2}', 'font:Times-Roman', 'fontSize:14']);
     });
 
     it('handles mock document without initial _font or _fontSize saved state without restoring', () => {
@@ -74,11 +68,7 @@ describe('content-measure utilities', () => {
       const height = measureTextHeight(mockDoc, 'No saved state', 12, 'Helvetica', false);
       assert.strictEqual(height, 30);
 
-      assert.deepStrictEqual(calls, [
-        'fontSize:12',
-        'font:Helvetica',
-        'heightOfString:No saved state:{"width":512}',
-      ]);
+      assert.deepStrictEqual(calls, ['fontSize:12', 'font:Helvetica', 'heightOfString:No saved state:{"width":512}']);
     });
 
     it('measures width using mock document and restores saved state', () => {
@@ -103,13 +93,7 @@ describe('content-measure utilities', () => {
       const width = measureTextWidth(mockDoc, 'Measure width mock', 18, 'Helvetica-Bold', false);
       assert.strictEqual(width, 120);
 
-      assert.deepStrictEqual(calls, [
-        'fontSize:18',
-        'font:Helvetica-Bold',
-        'widthOfString:Measure width mock',
-        'font:Helvetica',
-        'fontSize:10',
-      ]);
+      assert.deepStrictEqual(calls, ['fontSize:18', 'font:Helvetica-Bold', 'widthOfString:Measure width mock', 'font:Helvetica', 'fontSize:10']);
     });
   });
 
@@ -129,9 +113,13 @@ describe('content-measure utilities', () => {
       const mockDoc = {
         page: { width: 500, margins: { left: 40, right: 60 } },
         currentLineHeight: () => 14,
-        fontSize() { return this; },
-        font() { return this; },
-        heightOfString(text: string, options: { width?: number; indent?: number }) {
+        fontSize() {
+          return this;
+        },
+        font() {
+          return this;
+        },
+        heightOfString(_text: string, options: { width?: number; indent?: number }) {
           // Verify expected effective width (500 - 40 - 60 = 400)
           assert.strictEqual(options.width, 400);
           return 28;
@@ -166,8 +154,12 @@ describe('content-measure utilities', () => {
       const mockDoc = {
         page: { width: 600, margins: { left: 50, right: 50 } },
         currentLineHeight: () => 12,
-        fontSize() { return this; },
-        font() { return this; },
+        fontSize() {
+          return this;
+        },
+        font() {
+          return this;
+        },
         heightOfString() {
           heightOfStringCalled = true;
           return 15;
@@ -184,8 +176,12 @@ describe('content-measure utilities', () => {
       const mockDoc = {
         page: { width: 600, margins: { left: 0, right: 0 } },
         currentLineHeight: () => 10,
-        fontSize() { return this; },
-        font() { return this; },
+        fontSize() {
+          return this;
+        },
+        font() {
+          return this;
+        },
         widthOfString(word: string) {
           if (word.trim() === 'word1') return 50;
           if (word.trim() === 'word2') return 50.005; // 50 + 50.005 = 100.005 <= 100 + 0.01 (within epsilon)
@@ -242,8 +238,12 @@ describe('content-measure utilities', () => {
     it('uses doc.widthOfString directly when emoji is present in text but emojiAvailable is false', () => {
       let widthOfStringCalled = false;
       const mockDoc = {
-        fontSize() { return this; },
-        font() { return this; },
+        fontSize() {
+          return this;
+        },
+        font() {
+          return this;
+        },
         widthOfString() {
           widthOfStringCalled = true;
           return 75;
@@ -309,8 +309,12 @@ describe('content-measure utilities', () => {
     it('correctly passes font name and default font sizes to measureTextWidth', () => {
       const calls: Array<{ text: string }> = [];
       const mockDoc = {
-        fontSize() { return this; },
-        font() { return this; },
+        fontSize() {
+          return this;
+        },
+        font() {
+          return this;
+        },
         widthOfString(text: string) {
           calls.push({ text });
           return 100;
@@ -376,7 +380,10 @@ describe('content-measure utilities', () => {
     });
 
     it('measureGroupHeight sums heights of items and handles empty arrays', () => {
-      assert.strictEqual(measureGroupHeight([], (item: number) => item), 0);
+      assert.strictEqual(
+        measureGroupHeight([], (item: number) => item),
+        0
+      );
 
       const items = [10, 20, 30];
       const total = measureGroupHeight(items, (item) => item * 2);
