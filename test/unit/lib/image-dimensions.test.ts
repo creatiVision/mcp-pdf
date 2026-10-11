@@ -32,7 +32,7 @@
 import assert from 'assert';
 import PDFDocument from 'pdfkit';
 import { deflateSync } from 'zlib';
-import { getImageDimensions, getLocalImageDimensions, type ImageDimensions, parseImageDimensions, resolveImageDimensions } from '../../../src/lib/image-dimensions.ts';
+import { getImageDimensions, getLocalImageDimensions, type ImageDimensions, parseImageDimensions, resolveImageDimensions, isLocalPathSafe } from '../../../src/lib/image-dimensions.ts';
 
 // ---------------------------------------------------------------------------
 // Deterministic PRNG (fixed seed - results are reproducible across runs)
@@ -693,8 +693,16 @@ describe('image-dimensions: path traversal security checks', () => {
     }, /Cannot determine image dimensions/);
   });
 
-  it('allows valid explicit dimensions even if path is outside working directory', async () => {
-    const dims = await resolveImageDimensions('../../../etc/passwd', 100, 200);
-    assert.deepStrictEqual(dims, { width: 100, height: 200 });
+  it('blocks path traversal even when explicit dimensions are provided', async () => {
+    await assert.rejects(async () => {
+      await resolveImageDimensions('../../../etc/passwd', 100, 200);
+    }, /Cannot determine image dimensions/);
+  });
+
+  it('isLocalPathSafe returns false for path traversal', () => {
+    assert.strictEqual(isLocalPathSafe('../../../etc/passwd'), false);
+    assert.strictEqual(isLocalPathSafe('/etc/passwd'), false);
+    assert.strictEqual(isLocalPathSafe('./resources/logo.png'), true);
+    assert.strictEqual(isLocalPathSafe('https://example.com/logo.png'), true);
   });
 });
