@@ -410,7 +410,7 @@ async function downloadToTemp(url: string): Promise<string> {
  * Returns null if font cannot be resolved (caller should use fallback)
  * Throws error if URL download fails
  */
-export async function resolveFont(fontSpec: string): Promise<string | null> {
+async function doResolveFont(fontSpec: string): Promise<string | null> {
   // 1. Check if it's a PDF standard font (built-in, no file needed)
   if (isPDFStandardFont(fontSpec)) {
     return fontSpec;
@@ -433,6 +433,23 @@ export async function resolveFont(fontSpec: string): Promise<string | null> {
 
   // Unknown font specification
   return null;
+}
+
+/**
+ * Resolve font specification to actual font path or name
+ * Supports: PDF standard fonts, absolute paths, URLs, 'auto' detection
+ * Returns null if font cannot be resolved (caller should use fallback)
+ * Throws error if URL download fails
+ */
+export async function resolveFont(fontSpec: string): Promise<string | null> {
+  const cached = resolvedFontCache.get(fontSpec);
+  if (cached !== undefined) {
+    return cached;
+  }
+
+  const resolved = await doResolveFont(fontSpec);
+  resolvedFontCache.set(fontSpec, resolved);
+  return resolved;
 }
 
 /**
@@ -516,12 +533,15 @@ export interface CharacterValidationResult {
 
 // Cache for opened fontkit font instances by file path
 const fontCache = new Map<string, Font | null>();
+// Cache for resolved font paths/names
+const resolvedFontCache = new Map<string, string | null>();
 
 /**
  * Clear the internal fontkit font instance cache
  */
 export function clearFontCache(): void {
   fontCache.clear();
+  resolvedFontCache.clear();
   cachedSystemFont = undefined;
 }
 
