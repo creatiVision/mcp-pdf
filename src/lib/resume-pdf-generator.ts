@@ -202,7 +202,14 @@ export async function generateResumePDFBuffer(resume: ResumeSchema, options: Ren
   };
 
   // Create render context
-  const renderCtx = createRenderContext(doc, typography, layoutDoc.fieldTemplates, emojiAvailable, options.parseMarkdown ?? false, options.hyperlinkColor ?? '#0066CC');
+  const renderCtx = createRenderContext({
+    doc,
+    typography,
+    fieldTemplates: layoutDoc.fieldTemplates,
+    emojiAvailable,
+    parseMarkdown: options.parseMarkdown ?? false,
+    hyperlinkColor: options.hyperlinkColor ?? '#0066CC',
+  });
 
   // Return a promise that resolves when the PDF is complete
   return new Promise<Buffer>((resolve, reject) => {
