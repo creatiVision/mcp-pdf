@@ -10,7 +10,7 @@ import { ensureString, paragraphsFromContent, renderField } from '../formatting.
 import type { CompanyHeaderElement, CredentialData, CredentialListElement, DividerElement, EntryData, EntryHeaderElement, FieldTemplates, GroupElement, HeaderElement, KeywordListElement, LanguageListElement, ReferenceListElement, SectionTitleElement, StructuredContentElement, TextElement } from '../ir/types.ts';
 import { measureMarkdownTextHeight, renderText } from '../pdf-helpers.ts';
 import { getResolvedStyle, type TypographyOptions } from '../types/typography.ts';
-import { type ComputedPosition, calculateEntryColumnWidths, type Page, type PageNode, type RenderContext } from './types.ts';
+import { type ComputedPosition, calculateEntryColumnWidths, type CreateRenderContextOptions, type Page, type PageNode, type RenderContext } from './types.ts';
 
 // =============================================================================
 // Helper Functions
@@ -722,7 +722,8 @@ export function renderPage(ctx: RenderContext, page: Page): void {
 /**
  * Create a render context.
  */
-export function createRenderContext(doc: PDFKit.PDFDocument, typography: TypographyOptions, fieldTemplates: Required<FieldTemplates>, emojiAvailable: boolean, parseMarkdown: boolean, hyperlinkColor: string): RenderContext {
+export function createRenderContext(options: CreateRenderContextOptions): RenderContext {
+  const { doc, typography, fieldTemplates, emojiAvailable, parseMarkdown, hyperlinkColor } = options;
   return {
     doc,
     typography,
