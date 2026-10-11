@@ -358,7 +358,7 @@ export function measureStructuredContent(ctx: MeasureContext, element: Structure
   // Measure actual wrapped text height for each summary paragraph
   // Uses measureMarkdownTextHeight to account for bold text width differences
   for (const summary of summaries) {
-    totalHeight += measureMarkdownTextHeight(doc, summary, width, content.fontSize, lineGap, fonts);
+    totalHeight += measureMarkdownTextHeight(doc, summary, { width, fontSize: content.fontSize, lineGap, fonts });
     totalHeight += paragraphMargin;
   }
 
@@ -373,7 +373,7 @@ export function measureStructuredContent(ctx: MeasureContext, element: Structure
     for (const bulletItem of element.bullets ?? []) {
       // Prepend bullet character for accurate width calculation
       const bulletText = `• ${bulletItem}`;
-      totalHeight += measureMarkdownTextHeight(doc, bulletText, bulletWidth, content.fontSize, lineGap, fonts);
+      totalHeight += measureMarkdownTextHeight(doc, bulletText, { width: bulletWidth, fontSize: content.fontSize, lineGap, fonts });
       totalHeight += bulletMargin;
     }
   }
