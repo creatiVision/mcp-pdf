@@ -159,17 +159,14 @@ export function renderEmojiToBuffer(emoji: string, size: number): Buffer | null 
  * @param text - Input text containing mixed content
  * @returns Array of segments with type indicator
  */
-// Cache the emoji regex instance globally to avoid recompiling on every call
-const cachedEmojiRegex = emojiRegexFactory();
-
 export function splitTextAndEmoji(text: string): Array<{ type: 'text' | 'emoji'; content: string }> {
   const segments: Array<{ type: 'text' | 'emoji'; content: string }> = [];
 
-  // Reset lastIndex before exec loop
-  cachedEmojiRegex.lastIndex = 0;
+  // Use emoji-regex package for accurate, up-to-date emoji detection
+  const emojiRegex = emojiRegexFactory();
 
   let lastIndex = 0;
-  let match = cachedEmojiRegex.exec(text);
+  let match = emojiRegex.exec(text);
 
   while (match !== null) {
     // Add text before emoji
@@ -187,7 +184,7 @@ export function splitTextAndEmoji(text: string): Array<{ type: 'text' | 'emoji';
     });
 
     lastIndex = match.index + match[0].length;
-    match = cachedEmojiRegex.exec(text);
+    match = emojiRegex.exec(text);
   }
 
   // Add remaining text

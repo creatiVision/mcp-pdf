@@ -1,4 +1,3 @@
-import './polyfills.ts';
 import { handleVersionHelp } from './setup/version-help.ts';
 import type { ServerConfig } from './types.ts';
 
@@ -28,7 +27,7 @@ export default async function main(): Promise<void> {
   // Check for help/version flags FIRST, before config parsing
   const versionHelpResult = handleVersionHelp(process.argv);
   if (versionHelpResult.handled) {
-    process.stdout.write(`${versionHelpResult.output}\n`);
+    console.log(versionHelpResult.output);
     process.exit(0);
   }
 

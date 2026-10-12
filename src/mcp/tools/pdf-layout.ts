@@ -133,64 +133,8 @@ export default function createTool() {
         left: doc.page.margins.left,
       };
 
-      // Cache for resolved image dimensions within handler execution
-      const imageDimensionCache = new Map<string, Promise<{ width: number; height: number }>>();
-      const resolvedImageDimensions = new Map<string, { width: number; height: number }>();
-
-      function getCachedImageDimensions(imagePath: string, explicitWidth?: number, explicitHeight?: number): Promise<{ width: number; height: number }> {
-        const key = `${imagePath}:${explicitWidth ?? ""}:${explicitHeight ?? ""}`;
-        let promise = imageDimensionCache.get(key);
-        if (!promise) {
-          promise = resolveImageDimensions(imagePath, explicitWidth, explicitHeight).then((dims) => {
-            resolvedImageDimensions.set(key, dims);
-            return dims;
-          });
-          imageDimensionCache.set(key, promise);
-        }
-        return promise;
-      }
-
-      // Pre-resolve image dimensions for content items concurrently
-      async function preloadImages(items: ContentItem[]) {
-        const promises: Promise<unknown>[] = [];
-        function visit(item: ContentItem) {
-          if (item.type === "image") {
-            promises.push(getCachedImageDimensions(item.imagePath, item.width as number | undefined, item.height as number | undefined));
-          } else if (item.type === "group" && Array.isArray(item.children)) {
-            for (const child of item.children) {
-              visit(child as ContentItem);
-            }
-          }
-        }
-        for (const item of items) {
-          visit(item);
-        }
-        await Promise.all(promises);
-      }
-
-      // Pre-resolve image dimensions for layout nodes concurrently before rendering
-      async function preloadLayoutNodes(nodes: LayoutNode[]) {
-        const promises: Promise<unknown>[] = [];
-        function visitNode(node: LayoutNode) {
-          const item = node.content as ContentItem;
-          if (item.type === "group") {
-            if (node.children) {
-              for (const child of node.children) {
-                visitNode(child);
-              }
-            }
-          } else if (item.type === "image") {
-            promises.push(getCachedImageDimensions(item.imagePath, item.width as number | undefined, item.height as number | undefined));
-          }
-        }
-        for (const node of nodes) {
-          visitNode(node);
-        }
-        await Promise.all(promises);
-      }
-
       // Height measurer for Yoga layout
-      const measureHeight = async (item: LayoutContent, availableWidth: number): Promise<number> => {
+      const measureHeight = (item: LayoutContent, availableWidth: number): number => {
         if (item.type === 'text' || item.type === 'heading') {
           if (!item.text) return 0;
           const fontSize = item.type === 'heading' ? ((item.fontSize as number) ?? DEFAULT_HEADING_FONT_SIZE) : ((item.fontSize as number) ?? DEFAULT_TEXT_FONT_SIZE);
@@ -204,7 +148,7 @@ export default function createTool() {
           return height;
         }
         if (item.type === 'image') {
-          const dimensions = await getCachedImageDimensions(item.imagePath as string, item.width as number | undefined, item.height as number | undefined);
+          const dimensions = resolveImageDimensions(item.imagePath as string, item.width as number | undefined, item.height as number | undefined);
           return dimensions.height;
         }
         if (item.type === 'rect') {
@@ -235,11 +179,8 @@ export default function createTool() {
             break;
           }
           case 'image': {
-            const cacheKey = `${item.imagePath}:${item.width ?? ""}:${item.height ?? ""}`;
-            const dimensions = resolvedImageDimensions.get(cacheKey);
-            const width = dimensions?.width ?? item.width;
-            const height = dimensions?.height ?? item.height;
-            const opts = width !== undefined && height !== undefined ? { width, height } : undefined;
+            const dimensions = resolveImageDimensions(item.imagePath, item.width as number | undefined, item.height as number | undefined);
+            const opts = { width: dimensions.width, height: dimensions.height };
 
             const imgX = computedX ?? item.left;
             const imgY = computedY ?? item.top;
@@ -386,9 +327,6 @@ export default function createTool() {
           };
         });
 
-        // Preload image dimensions concurrently for page content
-        await preloadImages(pageContent);
-
         // Calculate layout for THIS page only
         const layoutNodes = await calculateLayout(layoutContent, pageWidth, pageHeight, measureHeight, margins, measureWidth);
 
@@ -412,9 +350,6 @@ export default function createTool() {
             }
           }
         }
-
-        // Preload image dimensions concurrently for layout nodes before rendering
-        await preloadLayoutNodes(layoutNodes);
 
         // Render items for this page
         for (const node of layoutNodes) {

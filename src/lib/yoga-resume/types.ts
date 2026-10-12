@@ -14,18 +14,6 @@ import type { FontConfig, TypographyOptions } from '../types/typography.ts';
 // =============================================================================
 
 /**
- * Options for creating a RenderContext.
- */
-export interface CreateRenderContextOptions {
-  doc: PDFKit.PDFDocument;
-  typography: TypographyOptions;
-  fieldTemplates: Required<FieldTemplates>;
-  emojiAvailable: boolean;
-  parseMarkdown: boolean;
-  hyperlinkColor: string;
-}
-
-/**
  * Context passed to all renderers.
  * Contains everything needed to render at a computed position.
  */

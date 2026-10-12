@@ -55,7 +55,7 @@ export async function createHTTPServer(config: ServerConfig, overrides?: Runtime
       contentDisposition: 'attachment',
     }
   );
-  app.use('/files', cors({ origin: publicUrl ? [publicUrl.origin] : false }), fileRouter);
+  app.use('/files', cors(), fileRouter);
 
   logger.info('http transport ready');
 

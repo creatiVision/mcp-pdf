@@ -55,6 +55,12 @@ export function getDefaultMargins(size: PageSizePreset = 'LETTER'): Margins {
 }
 
 /**
+ * Default margin for general PDF documents (1 inch = 72 points).
+ * @deprecated Use getDefaultMargins(size) instead for page-size-appropriate defaults.
+ */
+export const DEFAULT_MARGIN = 72;
+
+/**
  * Default margins for resume documents.
  * Intentionally tighter than standard 1-inch margins to fit more content.
  * top/bottom: 50pt (~0.69"), left/right: 54pt (~0.75")

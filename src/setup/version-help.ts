@@ -6,7 +6,7 @@ import { parseArgs } from 'util';
 
 // Kept dependency-free (fs/path/url/module-root-sync only) so `--version`/`--help`
 // resolve nothing beyond Node startup: config.ts's parseConfig pulls in @mcp-z/server.
-let cachedPkg: { name: string; version: string } | undefined;
+const pkg = JSON.parse(fs.readFileSync(path.join(moduleRoot(url.fileURLToPath(import.meta.url)), 'package.json'), 'utf-8'));
 
 const HELP_TEXT = `
 Usage: mcp-pdf [options]
@@ -32,12 +32,9 @@ Examples:
   LOG_LEVEL=debug mcp-pdf           # Set log level via env var
 `.trim();
 
-/** Package metadata read from package.json, resolved relative to this file. Lazily evaluated and cached. */
+/** Package metadata read from package.json, resolved relative to this file. */
 export function readPkg(): { name: string; version: string } {
-  if (!cachedPkg) {
-    cachedPkg = JSON.parse(fs.readFileSync(path.join(moduleRoot(url.fileURLToPath(import.meta.url)), 'package.json'), 'utf-8'));
-  }
-  return cachedPkg as { name: string; version: string };
+  return pkg;
 }
 
 /**
@@ -55,7 +52,7 @@ export function handleVersionHelp(args: string[]): { handled: boolean; output?: 
     allowPositionals: true,
   });
 
-  if (values.version) return { handled: true, output: readPkg().version };
+  if (values.version) return { handled: true, output: pkg.version };
   if (values.help) return { handled: true, output: HELP_TEXT };
   return { handled: false };
 }

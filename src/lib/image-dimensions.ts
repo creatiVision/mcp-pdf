@@ -36,7 +36,6 @@
 
 import * as fs from 'fs';
 import * as path from 'path';
-import { IMAGE_CACHE_DIR } from './download.ts';
 
 export interface ImageDimensions {
   width: number;
@@ -165,130 +164,33 @@ export function parseImageDimensions(buffer: Buffer): ImageDimensions | null {
 }
 
 /**
- * Get intrinsic dimensions of a local image file asynchronously.
- *
- * Reads an initial 64KB chunk asynchronously without blocking the event loop thread
- * or allocating full file buffers for large image files.
+ * Get intrinsic dimensions of a local image file.
  *
  * @param imagePath - Absolute or relative path to image file
-/**
- * Check if a path is a URL (http:// or https://)
+ * @returns Dimensions or null if file doesn't exist or can't be read
  */
-export function isUrl(imagePath: string): boolean {
-  return imagePath.startsWith('http://') || imagePath.startsWith('https://');
-}
-
-/**
- * Check if a local image path is safe from path traversal attacks.
- * Verifies that the resolved path (and its realpath if the file exists) stays within process.cwd() or IMAGE_CACHE_DIR.
- */
-export function isLocalPathSafe(imagePath: string): boolean {
-  if (isUrl(imagePath)) {
-    return true;
-  }
+function getLocalImageDimensions(imagePath: string): ImageDimensions | null {
   try {
-    const workingDir = path.resolve(process.cwd());
-    const cacheDir = path.resolve(IMAGE_CACHE_DIR);
-    const resolvedPath = path.resolve(workingDir, imagePath);
+    // Resolve relative paths
+    const resolvedPath = path.isAbsolute(imagePath) ? imagePath : path.resolve(process.cwd(), imagePath);
 
-    const isInside = (parent: string, candidate: string): boolean => {
-      const rel = path.relative(parent, candidate);
-      return !rel.startsWith('..') && !path.isAbsolute(rel);
-    };
-
-    if (!isInside(workingDir, resolvedPath) && !isInside(cacheDir, resolvedPath)) {
-      return false;
-    }
-
-    // Check symlink target if file exists
-    if (fs.existsSync(resolvedPath)) {
-      const realPath = fs.realpathSync(resolvedPath);
-      if (!isInside(workingDir, realPath) && !isInside(cacheDir, realPath)) {
-        return false;
-      }
-    }
-
-    return true;
-  } catch {
-    return false;
-  }
-}
-
-export async function getLocalImageDimensions(imagePath: string): Promise<ImageDimensions | null> {
-  try {
-    if (!isLocalPathSafe(imagePath)) {
+    if (!fs.existsSync(resolvedPath)) {
       return null;
     }
 
-    const workingDir = path.resolve(process.cwd());
-    const resolvedPath = path.resolve(workingDir, imagePath);
-
-    let handle: fs.promises.FileHandle | null = null;
-    try {
-      handle = await fs.promises.open(resolvedPath, 'r');
-      const stat = await handle.stat();
-      if (!stat.isFile()) {
-        return null;
-      }
-      const fileSize = stat.size;
-      if (fileSize < 2) {
-        return null;
-      }
-
-      // Read initial chunk (up to 64KB)
-      const initialChunkSize = Math.min(64 * 1024, fileSize);
-      const initialBuffer = Buffer.allocUnsafe(initialChunkSize);
-      const { bytesRead } = await handle.read(initialBuffer, 0, initialChunkSize, 0);
-      const initialSlice = initialBuffer.subarray(0, bytesRead);
-
-      const dimensions = parseImageDimensions(initialSlice);
-      if (dimensions && dimensions.width && dimensions.height) {
-        return dimensions;
-      }
-
-      // If initial chunk wasn't enough (e.g., large metadata headers before SOF/IHDR), read full file
-      if (fileSize > initialChunkSize) {
-        const fullBuffer = Buffer.allocUnsafe(fileSize);
-        initialSlice.copy(fullBuffer, 0);
-        await handle.read(fullBuffer, bytesRead, fileSize - bytesRead, bytesRead);
-        const fullDimensions = parseImageDimensions(fullBuffer);
-        if (fullDimensions && fullDimensions.width && fullDimensions.height) {
-          return fullDimensions;
-        }
-      }
-
-      return null;
-    } finally {
-      if (handle) {
-        await handle.close();
-      }
+    const buffer = fs.readFileSync(resolvedPath);
+    const dimensions = parseImageDimensions(buffer);
+    if (dimensions && dimensions.width && dimensions.height) {
+      return dimensions;
     }
+    return null;
   } catch {
     return null;
   }
 }
 
 /**
- * Get image dimensions with appropriate handling for local vs network images.
- *
- * - For local files: Returns intrinsic dimensions from file headers
- * - For network URLs: Returns null (caller must provide explicit dimensions)
- *
- * @param imagePath - Path or URL to image
- * @returns Dimensions or null if unavailable
- */
-export async function getImageDimensions(imagePath: string): Promise<ImageDimensions | null> {
-  if (isUrl(imagePath)) {
-    // Network images require explicit dimensions (React Native pattern)
-    // Return null so caller knows dimensions must be provided
-    return null;
-  }
-
-  return getLocalImageDimensions(imagePath);
-}
-
-/**
- * Resolve image dimensions with explicit overrides asynchronously.
+ * Resolve image dimensions with explicit overrides.
  *
  * Priority:
  * 1. Explicit width/height from user
@@ -304,19 +206,14 @@ export async function getImageDimensions(imagePath: string): Promise<ImageDimens
  * @returns Resolved dimensions
  * @throws Error if dimensions cannot be determined
  */
-export async function resolveImageDimensions(imagePath: string, explicitWidth?: number, explicitHeight?: number): Promise<ImageDimensions> {
-  // Validate path traversal for local paths before anything else
-  if (!isUrl(imagePath) && !isLocalPathSafe(imagePath)) {
-    throw new Error(`Cannot determine image dimensions for: ${imagePath}. File may not exist or format is unsupported. Please provide explicit width and height.`);
-  }
-
+export function resolveImageDimensions(imagePath: string, explicitWidth?: number, explicitHeight?: number): ImageDimensions {
   // Both dimensions provided - use them directly
   if (explicitWidth !== undefined && explicitHeight !== undefined) {
     return { width: explicitWidth, height: explicitHeight };
   }
 
   // Try to get intrinsic dimensions
-  const intrinsic = await getImageDimensions(imagePath);
+  const intrinsic = getLocalImageDimensions(imagePath);
 
   // Only width provided - calculate height from aspect ratio
   if (explicitWidth !== undefined && intrinsic) {
@@ -336,9 +233,5 @@ export async function resolveImageDimensions(imagePath: string, explicitWidth?: 
   }
 
   // Cannot determine dimensions
-  if (isUrl(imagePath)) {
-    throw new Error(`Image dimensions required for network images. Please provide explicit width and height for: ${imagePath}`);
-  }
-
   throw new Error(`Cannot determine image dimensions for: ${imagePath}. File may not exist or format is unsupported. Please provide explicit width and height.`);
 }

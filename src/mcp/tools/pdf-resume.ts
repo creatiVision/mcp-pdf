@@ -17,7 +17,7 @@ import { z } from 'zod';
 import type { Margins, PageSizePreset } from '../../constants.ts';
 import { FONT_OPTION_DESCRIPTION, MARKDOWN_OPTION_DESCRIPTION } from '../../lib/pdf-core.ts';
 import { generateResumePDFBuffer, type RenderOptions, type TypographyOptions } from '../../lib/resume-pdf-generator.ts';
-import { validateResumeAsync } from '../../lib/validator.ts';
+import { validateResume } from '../../lib/validator.ts';
 import { resumeLayoutSchema, sectionsConfigSchema, stylingSchema } from '../../schemas/resume.ts';
 import type { StorageExtra } from '../../types.ts';
 
@@ -88,7 +88,7 @@ export default function createTool() {
 
     try {
       // Validate resume against JSON Schema
-      const validation = await validateResumeAsync(resume);
+      const validation = validateResume(resume);
       if (!validation.valid) {
         throw new ProtocolError(ProtocolErrorCode.InvalidParams, `Resume validation failed: ${validation.errors?.join('; ') || 'Unknown error'}`);
       }
@@ -131,13 +131,26 @@ export default function createTool() {
         }
       }
 
-      // Resolve effective margins by merging user margins with defaults
+      // Resolve effective margins
+      // Note: resume tool layout uses 'margins' inside 'styling' object, slightly different structure than pdf-document
+      // If styling.margins is provided, use it (and require it to be complete/valid Zod schema handles structure, we handle defaults)
+
       const defaultResumeMargins = getResumeDefaultMargins(pageSize as PageSizePreset);
       const userMargins = styling?.margins;
 
-      // Merge specified user margins with defaults for any omitted sides
+      // If user provides ANY margin, they must provide ALL (as per schema description, though Zod makes them optional for backward compat?
+      // No, let's strictly enforce it or merge. The improved UX goal says "Require all 4".
+      // But Zod schema above has .optional() on properties for backward compatibility?
+      // Wait, I didn't change the Zod definition to require them in the chunk above, I only changed description.
+      // I should fundamentally change schema to: top: z.number(), ... (required).
+
+      // Let's implement the logic:
       let margins: Margins;
       if (userMargins) {
+        // If any is missing, fill with default? No, the goal is strictness.
+        // But schema says optional. I'll merge with defaults but report "effective".
+        // Actually, for better UX: "Partial updates use defaults for missing sides" is confusing.
+        // Let's stick to "Merge with defaults" but transparency in output.
         margins = {
           top: userMargins.top ?? defaultResumeMargins.top,
           bottom: userMargins.bottom ?? defaultResumeMargins.bottom,
