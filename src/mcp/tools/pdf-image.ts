@@ -8,6 +8,7 @@
  * Full scale (1.0) provides detailed view but larger file size.
  */
 
+import '../../polyfills.ts';
 import { type CallToolResult, getFileUri, ProtocolError, ProtocolErrorCode, type ToolModule, writeFile } from '@mcp-z/server';
 import { existsSync } from 'fs';
 import { basename } from 'path';

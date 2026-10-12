@@ -1,3 +1,4 @@
+import './polyfills.ts';
 import { handleVersionHelp } from './setup/version-help.ts';
 import type { ServerConfig } from './types.ts';
 
